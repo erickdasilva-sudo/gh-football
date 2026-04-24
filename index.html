@@ -166,6 +166,7 @@
   <button class="tab active" id="tabPlayers" onclick="showTab('players')">👥 Players</button>
   <button class="tab" id="tabGames" onclick="showTab('games')">📅 Games</button>
   <button class="tab" id="tabTable" onclick="showTab('table')">🏆 Table</button>
+  <button class="tab" id="tabStats" onclick="showTab('stats')">📊 Stats</button>
 </div>
 
 <div class="content" id="mainContent">
@@ -181,6 +182,9 @@
   </button>
   <button class="nav-item" id="navTable" onclick="showTab('table')">
     <span class="nav-icon">🏆</span>Table
+  </button>
+  <button class="nav-item" id="navStats" onclick="showTab('stats')">
+    <span class="nav-icon">📊</span>Stats
   </button>
 </div>
 
@@ -207,6 +211,7 @@ const db = getDatabase(fbApp);
 let currentTab = 'players';
 let players = {};
 let games = {};
+let leagueData = null; // { teams: {teamName: {p,w,d,l,gf,ga,pts}}, updatedAt: timestamp, updatedBy: string }
 let editingPlayer = null;
 
 function setSyncStatus(s) {
@@ -221,7 +226,9 @@ onValue(ref(db,'players'), snap => {
   players = snap.val() || {};
   setSyncStatus('live');
   hideSplash();
-  if (currentTab==='players') renderPlayers(); else renderGames();
+  if (currentTab==='players') renderPlayers();
+  else if (currentTab==='stats') renderStats();
+  else if (currentTab==='games') renderGames();
 }, () => { setSyncStatus('offline'); hideSplash(); });
 
 onValue(ref(db,'games'), snap => {
@@ -230,8 +237,42 @@ onValue(ref(db,'games'), snap => {
   hideSplash();
   if (currentTab==='games') renderGames();
   else if (currentTab==='players') renderPlayers();
+  else if (currentTab==='stats') renderStats();
   else if (currentTab==='table') renderTable();
 }, () => { setSyncStatus('offline'); hideSplash(); });
+
+// Firebase keys can't contain: . # $ / [ ]
+// Our team names have "/" and "." (e.g. "BK Norlys - Rød/Hvid", "Gebr. Heinemann Retail - Hvid")
+// so we encode those characters when writing and decode when reading.
+function encodeTeamKey(name) {
+  return name.replace(/\//g, '__SL__').replace(/\./g, '__DT__').replace(/#/g,'__HS__').replace(/\$/g,'__DL__').replace(/\[/g,'__LB__').replace(/\]/g,'__RB__');
+}
+function decodeTeamKey(key) {
+  return key.replace(/__SL__/g, '/').replace(/__DT__/g, '.').replace(/__HS__/g,'#').replace(/__DL__/g,'$').replace(/__LB__/g,'[').replace(/__RB__/g,']');
+}
+function decodeLeagueTeams(encodedTeams) {
+  if (!encodedTeams) return {};
+  const out = {};
+  Object.entries(encodedTeams).forEach(([k, v]) => { out[decodeTeamKey(k)] = v; });
+  return out;
+}
+function encodeLeagueTeams(teams) {
+  const out = {};
+  Object.entries(teams).forEach(([k, v]) => { out[encodeTeamKey(k)] = v; });
+  return out;
+}
+
+onValue(ref(db,'leagueData'), snap => {
+  const raw = snap.val();
+  if (!raw) { leagueData = null; }
+  else {
+    leagueData = {
+      ...raw,
+      teams: decodeLeagueTeams(raw.teams)
+    };
+  }
+  if (currentTab==='table') renderTable();
+}, () => {});
 
 function hideSplash() {
   const s = document.getElementById('splash');
@@ -265,7 +306,7 @@ function closeModal() { document.getElementById('modalContainer').innerHTML=''; 
 
 window.showTab = function(tab) {
   currentTab = tab;
-  ['Players','Games','Table'].forEach(n => {
+  ['Players','Games','Table','Stats'].forEach(n => {
     const tl = n.toLowerCase();
     const tabEl = document.getElementById('tab'+n);
     const navEl = document.getElementById('nav'+n);
@@ -274,81 +315,121 @@ window.showTab = function(tab) {
   });
   if (tab==='players') renderPlayers();
   else if (tab==='games') renderGames();
+  else if (tab==='stats') renderStats();
   else renderTable();
 };
 
 const leagueTeams = [
-  { pos:1,  name:'FC Railtek - Navy/Hvid' },
-  { pos:2,  name:'LIF - Gul' },
+  { pos:1,  name:'Securitas - Rød' },
+  { pos:2,  name:'The Helping Hands - Sort' },
   { pos:3,  name:'BK Norlys - Rød/Hvid' },
-  { pos:4,  name:'MergeIT - Sort' },
-  { pos:5,  name:'MS United - Blå' },
-  { pos:6,  name:'SAS Stars - Rød' },
-  { pos:7,  name:'Gebr. Heinemann Retail - Hvid' },
-  { pos:8,  name:'Team GO - Blå/Lyserød' },
-  { pos:9,  name:'Securitas - Rød' },
-  { pos:10, name:'Rentokil-Initial - Hvid/Blå' },
-  { pos:11, name:'Netlight United - Bordeaux' },
-  { pos:12, name:'The Helping Hands - Sort' },
-  { pos:13, name:'Solar BK - Blå' },
-  { pos:14, name:'BK OiSTER - Lilla' },
-  { pos:15, name:'FC Styrkehuset - Sort' },
-  { pos:16, name:'Flyhjælp United - Blå/Hvid' },
+  { pos:4,  name:'Flyhjælp United - Blå/Hvid' },
+  { pos:5,  name:'FC Railtek - Navy/Hvid' },
+  { pos:6,  name:'LIF - Gul' },
+  { pos:7,  name:'MS United - Blå' },
+  { pos:8,  name:'SAS Stars - Blå' },
+  { pos:9,  name:'Gebr. Heinemann Retail - Hvid' },
+  { pos:10, name:'Team GO - Gul' },
+  { pos:11, name:'Solar BK - Blå' },
+  { pos:12, name:'BK OiSTER - Lilla' },
+  { pos:13, name:'FC Styrkehuset - Sort' },
+  { pos:14, name:'MergeIT - Sort' },
+  { pos:15, name:'Netlight United - Bordeaux' },
+  { pos:16, name:'Rentokil-Initial - Hvid/Blå' },
 ];
 
 function renderTable() {
   const c = document.getElementById('mainContent');
+  const ourName = 'Gebr. Heinemann Retail - Hvid';
 
-  // Build stats from games in Firebase
+  // Build stats - prefer external data if available, fall back to our games
   const stats = {};
   leagueTeams.forEach(t => {
     stats[t.name] = { p:0, w:0, d:0, l:0, gf:0, ga:0, pts:0 };
   });
 
-  Object.values(games).forEach(g => {
-    if (!g.result) return;
-    const parts = g.result.split('-');
-    if (parts.length !== 2) return;
-    const hg = parseInt(parts[0]), ag = parseInt(parts[1]);
-    if (isNaN(hg)||isNaN(ag)) return;
-    const home = 'Gebr. Heinemann Retail - Hvid';
-    const away = g.opponent;
-    if (!stats[home]) stats[home]={p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0};
-    if (!stats[away]) stats[away]={p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0};
-    stats[home].p++; stats[away].p++;
-    stats[home].gf+=hg; stats[home].ga+=ag;
-    stats[away].gf+=ag; stats[away].ga+=hg;
-    if (hg>ag){ stats[home].w++; stats[home].pts+=3; stats[away].l++; }
-    else if (hg<ag){ stats[away].w++; stats[away].pts+=3; stats[home].l++; }
-    else { stats[home].d++; stats[home].pts+=1; stats[away].d++; stats[away].pts+=1; }
-  });
+  const hasExternal = leagueData && leagueData.teams;
+  if (hasExternal) {
+    // Use pasted/edited league data
+    Object.entries(leagueData.teams).forEach(([name, s]) => {
+      if (stats[name]) {
+        stats[name] = {
+          p: s.p||0, w: s.w||0, d: s.d||0, l: s.l||0,
+          gf: s.gf||0, ga: s.ga||0, pts: s.pts||0
+        };
+      }
+    });
+  } else {
+    // Fall back to building from our own games only
+    Object.values(games).forEach(g => {
+      if (!g.result) return;
+      const parts = g.result.split('-');
+      if (parts.length !== 2) return;
+      const hg = parseInt(parts[0]), ag = parseInt(parts[1]);
+      if (isNaN(hg)||isNaN(ag)) return;
+      const home = ourName;
+      const away = leagueTeams.find(t => t.name === g.opponent)?.name || g.opponent;
+      if (!stats[home]) stats[home]={p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0};
+      if (!stats[away]) stats[away]={p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0};
+      stats[home].p++; stats[away].p++;
+      stats[home].gf+=hg; stats[home].ga+=ag;
+      stats[away].gf+=ag; stats[away].ga+=hg;
+      if (hg>ag){ stats[home].w++; stats[home].pts+=3; stats[away].l++; }
+      else if (hg<ag){ stats[away].w++; stats[away].pts+=3; stats[home].l++; }
+      else { stats[home].d++; stats[home].pts+=1; stats[away].d++; stats[away].pts+=1; }
+    });
+  }
 
-  // Sort by pts desc, then gd
+  // Sort by pts desc, then goal difference, then gf
   const sorted = leagueTeams.map(t => ({ ...t, ...stats[t.name] }))
     .sort((a,b) => {
       if (b.pts !== a.pts) return b.pts - a.pts;
-      return (b.gf-b.ga) - (a.gf-a.ga);
+      if ((b.gf-b.ga) !== (a.gf-a.ga)) return (b.gf-b.ga) - (a.gf-a.ga);
+      return b.gf - a.gf;
     })
     .map((t,i) => ({ ...t, rank: i+1 }));
 
-  const ourName = 'Gebr. Heinemann Retail - Hvid';
   const shortName = n => {
     if (n === ourName) return 'GH Retail';
-    return n.length > 18 ? n.slice(0,16)+'…' : n;
+    return n.length > 16 ? n.slice(0,14)+'…' : n;
   };
+
+  // Header with update info and paste button
+  let updatedLine = '';
+  if (hasExternal && leagueData.updatedAt) {
+    const d = new Date(leagueData.updatedAt);
+    const now = new Date();
+    const diffH = (now - d) / 36e5;
+    let ago;
+    if (diffH < 1) ago = Math.round(diffH*60) + 'min ago';
+    else if (diffH < 24) ago = Math.round(diffH) + 'h ago';
+    else ago = Math.round(diffH/24) + 'd ago';
+    updatedLine = `<span style="color:var(--green)">● </span>Updated ${ago}`;
+  } else {
+    updatedLine = `<span style="color:#f0b429">● </span>From our games only — tap Paste to sync full table`;
+  }
 
   let h = `<div class="section-header">
     <div class="section-title">Pulje 1 — 2026</div>
     <span class="count-badge">16 hold</span>
   </div>
+
+  <div style="display:flex;gap:8px;margin-bottom:12px;">
+    <button onclick="openPasteTable()" style="flex:1;padding:10px;background:var(--green);border:none;border-radius:10px;color:#fff;font-family:'DM Sans',sans-serif;font-weight:600;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">📋 Paste Table or Schedule</button>
+    <button onclick="openLeagueSource()" style="padding:10px 12px;background:var(--surface3);border:1px solid var(--border);border-radius:10px;color:var(--text2);font-family:'DM Sans',sans-serif;font-size:12px;cursor:pointer;">🔗</button>
+  </div>
+
+  <div style="font-size:11px;color:var(--text3);margin-bottom:10px;padding:0 2px;">${updatedLine}</div>
+
   <div style="background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);overflow:hidden;">
-    <div style="display:grid;grid-template-columns:28px 1fr 26px 26px 26px 26px 36px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--surface3);">
+    <div style="display:grid;grid-template-columns:24px 1fr 22px 22px 22px 22px 44px 32px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--surface3);gap:4px;">
       <span style="font-size:10px;color:var(--text3);font-weight:600">#</span>
       <span style="font-size:10px;color:var(--text3);font-weight:600">Hold</span>
       <span style="font-size:10px;color:var(--text3);font-weight:600;text-align:center">K</span>
       <span style="font-size:10px;color:var(--text3);font-weight:600;text-align:center">V</span>
       <span style="font-size:10px;color:var(--text3);font-weight:600;text-align:center">U</span>
       <span style="font-size:10px;color:var(--text3);font-weight:600;text-align:center">N</span>
+      <span style="font-size:10px;color:var(--text3);font-weight:600;text-align:center">Score</span>
       <span style="font-size:10px;color:var(--text3);font-weight:600;text-align:right">Pts</span>
     </div>`;
 
@@ -358,23 +439,479 @@ function renderTable() {
     const nameColor = isUs ? 'color:var(--green);font-weight:600;' : '';
     const ptsColor = isUs ? 'color:var(--green);' : 'color:var(--accent);';
     const rankColor = t.rank<=3 ? 'color:#ffd700;' : 'color:var(--text3);';
-    h += `<div style="display:grid;grid-template-columns:28px 1fr 26px 26px 26px 26px 36px;padding:10px 12px;border-bottom:1px solid var(--border);${bg}align-items:center;">
+    const scoreStr = `${t.gf}-${t.ga}`;
+    h += `<div onclick="openEditTeamRow('${t.name.replace(/'/g,"\\'")}')" style="display:grid;grid-template-columns:24px 1fr 22px 22px 22px 22px 44px 32px;padding:10px 12px;border-bottom:1px solid var(--border);${bg}align-items:center;gap:4px;cursor:pointer;">
       <span style="font-size:12px;font-weight:600;${rankColor}">${t.rank}</span>
-      <span style="font-size:13px;${nameColor}white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${shortName(t.name)}</span>
-      <span style="font-size:12px;color:var(--text2);text-align:center">${t.p}</span>
-      <span style="font-size:12px;color:#8ae8a0;text-align:center">${t.w}</span>
-      <span style="font-size:12px;color:#f0d060;text-align:center">${t.d}</span>
-      <span style="font-size:12px;color:#f09090;text-align:center">${t.l}</span>
+      <span style="font-size:12px;${nameColor}white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${shortName(t.name)}</span>
+      <span style="font-size:11px;color:var(--text2);text-align:center">${t.p}</span>
+      <span style="font-size:11px;color:#8ae8a0;text-align:center">${t.w}</span>
+      <span style="font-size:11px;color:#f0d060;text-align:center">${t.d}</span>
+      <span style="font-size:11px;color:#f09090;text-align:center">${t.l}</span>
+      <span style="font-size:11px;color:var(--text2);text-align:center;white-space:nowrap;">${scoreStr}</span>
       <span style="font-size:13px;font-weight:700;text-align:right;${ptsColor}">${t.pts}</span>
     </div>`;
   });
 
   h += `</div>
   <div style="margin-top:12px;padding:10px 14px;background:var(--surface);border-radius:10px;border:1px solid var(--border);font-size:11px;color:var(--text3);line-height:1.8;">
-    <span style="color:var(--green);font-weight:600;">━</span> Gebr. Heinemann Retail &nbsp;|&nbsp;
+    <span style="color:var(--green);font-weight:600;">━</span> GH Retail &nbsp;|&nbsp;
     <span style="color:#ffd700;">●</span> Top 3 &nbsp;|&nbsp;
-    K=Kampe &nbsp; V=Vundet &nbsp; U=Uafgjort &nbsp; N=Nedlag
+    K=Kampe · V=Vundet · U=Uafgjort · N=Nedlag<br>
+    <span style="color:var(--text3);">Tap a team to edit its numbers manually</span>
   </div>`;
+
+  c.innerHTML = h;
+}
+
+// ============================================================
+// LEAGUE TABLE: PASTE PARSER & MANUAL EDIT
+// ============================================================
+
+// Helper: find known teams in a line, ordered by position they appear
+function findTeamsInLine(line) {
+  const sortedTeams = [...leagueTeams].sort((a,b) => b.name.length - a.name.length);
+  const found = [];
+  let remaining = line;
+  for (const t of sortedTeams) {
+    const idx = remaining.indexOf(t.name);
+    if (idx !== -1) {
+      found.push({ name: t.name, idx: line.indexOf(t.name) });
+      // Replace with spaces so we don't re-match overlapping names (e.g. "BK" prefix)
+      remaining = remaining.slice(0,idx) + ' '.repeat(t.name.length) + remaining.slice(idx + t.name.length);
+    }
+  }
+  found.sort((a,b) => a.idx - b.idx);
+  return found.map(f => f.name);
+}
+
+// AUTO-DETECTING parser — handles both:
+//   1. Standings table: "1 Team - Sort Club 2 2 0 0 17-7 6"
+//   2. Match schedule:  "13-04-2026 17:30 Venue Team1 Team2 Pulje 1 Kval" + "5-2" on next line
+function parsePastedText(text) {
+  // Detect schedule format by looking for date patterns like "DD-MM-2026"
+  const isSchedule = /\d{2}-\d{2}-20\d{2}/.test(text);
+  if (isSchedule) return parseScheduleText(text);
+  return parseStandingsText(text);
+}
+
+// Parse the full match schedule — walks matches, computes W/D/L/gf/ga/pts from scratch
+function parseScheduleText(text) {
+  const stats = {};
+  leagueTeams.forEach(t => stats[t.name] = { p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0 });
+
+  const lines = text.split(/\r?\n/).map(l => l.trim());
+  let parsedMatches = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // Match rows start with a date like "13-04-2026"
+    if (!/\d{2}-\d{2}-20\d{2}/.test(line)) continue;
+
+    const teams = findTeamsInLine(line);
+    if (teams.length !== 2) continue;
+
+    // Score could be on the same line or the next line (the tournament site puts it on next line)
+    // First strip date+time from the line so we don't confuse date dashes with scores
+    const cleaned = line.replace(/\d{2}-\d{2}-20\d{2}\s*\d{1,2}:\d{2}/, '');
+    let scoreMatch = cleaned.match(/(?:^|\s)(\d+)\s*[-–]\s*(\d+)(?:\s|$)/);
+    if (!scoreMatch && i+1 < lines.length) {
+      const next = lines[i+1];
+      if (next && !/\d{2}-\d{2}-20\d{2}/.test(next)) {
+        const m = next.match(/^\s*(\d+)\s*[-–]\s*(\d+)\s*$/);
+        if (m) scoreMatch = m;
+      }
+    }
+
+    if (!scoreMatch) continue; // Match not played yet — skip
+
+    const hg = parseInt(scoreMatch[1]);
+    const ag = parseInt(scoreMatch[2]);
+    if (isNaN(hg) || isNaN(ag)) continue;
+
+    const [home, away] = teams;
+    stats[home].p++; stats[away].p++;
+    stats[home].gf += hg; stats[home].ga += ag;
+    stats[away].gf += ag; stats[away].ga += hg;
+    if (hg > ag)      { stats[home].w++; stats[home].pts += 3; stats[away].l++; }
+    else if (hg < ag) { stats[away].w++; stats[away].pts += 3; stats[home].l++; }
+    else              { stats[home].d++; stats[home].pts += 1; stats[away].d++; stats[away].pts += 1; }
+    parsedMatches++;
+  }
+
+  // Only return teams with at least one match
+  const results = {};
+  Object.entries(stats).forEach(([name, s]) => {
+    if (s.p > 0) results[name] = s;
+  });
+  const unmatched = leagueTeams.map(t=>t.name).filter(n => !results[n]);
+  return { results, unmatched, mode: 'schedule', matchCount: parsedMatches };
+}
+
+// Parse the standings table (Pl. Team Club K V U T Score Pts)
+function parseStandingsText(text) {
+  const results = {};
+  const lines = text.split(/\r?\n/);
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    // Skip header rows
+    if (/^(pl\.?|hold|klub|kampe|pulje|score|point|kvalif)/i.test(line) && !/\d+-\d+/.test(line)) continue;
+
+    // Find which known team this line refers to
+    const sortedTeams = [...leagueTeams].sort((a,b) => b.name.length - a.name.length);
+    const matched = sortedTeams.find(t => {
+      const parts = t.name.split(' - ');
+      return line.includes(t.name) || (parts[0] && line.includes(parts[0]));
+    });
+
+    if (!matched) continue;
+
+    const scoreMatch = line.match(/(\d+)\s*[-–]\s*(\d+)/);
+    if (!scoreMatch) continue;
+    const gf = parseInt(scoreMatch[1]);
+    const ga = parseInt(scoreMatch[2]);
+
+    const remainder = line.replace(scoreMatch[0], ' SCORE ');
+    const nums = (remainder.match(/\b\d+\b/g) || []).map(Number);
+
+    if (nums.length < 6) continue;
+    const [pos, p, w, d, l] = nums;
+    const pts = nums[nums.length - 1];
+
+    results[matched.name] = { p, w, d, l, gf, ga, pts };
+  }
+
+  const unmatched = leagueTeams.map(t=>t.name).filter(n => !results[n]);
+  return { results, unmatched, mode: 'standings' };
+}
+
+window.openPasteTable = function() {
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <div class="modal-title">📋 Paste from Tournament Site</div>
+        <div style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:14px;">
+          Paste <strong>either</strong> the standings table <strong>or</strong> the full match schedule (Kampplan). The app detects which and updates the table.
+        </div>
+        <div class="form-group">
+          <label class="form-label">Paste here</label>
+          <textarea class="form-input" id="pasteArea" rows="10" placeholder="Either format works:
+
+Standings:  1  The Helping Hands - Sort  Hands  2  2  0  0  17-7  6
+
+Schedule:   13-04-2026 17:30  Venue  Team A  Team B  Pulje 1  1  Kvalifikation
+            5-2" style="font-family:monospace;font-size:12px;resize:vertical;min-height:180px;"></textarea>
+        </div>
+        <div id="pastePreview" style="font-size:12px;color:var(--text3);margin-bottom:12px;min-height:20px;"></div>
+        <button class="submit-btn" onclick="applyPaste()">Parse & Save</button>
+        <button class="cancel-btn" onclick="closeModal()">Cancel</button>
+      </div>
+    </div>`;
+
+  const ta = document.getElementById('pasteArea');
+  const preview = document.getElementById('pastePreview');
+  ta.addEventListener('input', () => {
+    if (!ta.value.trim()) { preview.innerHTML=''; return; }
+    const out = parsePastedText(ta.value);
+    const matched = Object.keys(out.results).length;
+    const modeLabel = out.mode === 'schedule'
+      ? `📅 Schedule detected${out.matchCount?` · ${out.matchCount} played matches`:''}`
+      : `📋 Standings detected`;
+    if (matched === 0) {
+      preview.innerHTML = `<span style="color:#f09090;">⚠️ No teams matched — check the format</span>`;
+    } else {
+      preview.innerHTML = `<span style="color:var(--green);">✅ ${modeLabel} · Matched ${matched}/16 teams${out.unmatched.length ? ` &nbsp;·&nbsp; <span style="color:#f0b429">${out.unmatched.length} with no data</span>` : ''}</span>`;
+    }
+  });
+};
+
+window.applyPaste = async function() {
+  const text = document.getElementById('pasteArea').value;
+  const out = parsePastedText(text);
+  const matched = Object.keys(out.results).length;
+
+  if (matched === 0) {
+    showToast('No teams matched. Check format.');
+    return;
+  }
+
+  // For schedule: replace (authoritative). For standings: merge.
+  let merged;
+  if (out.mode === 'schedule') {
+    merged = {};
+    leagueTeams.forEach(t => {
+      merged[t.name] = out.results[t.name] || { p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0 };
+    });
+  } else {
+    if (out.unmatched.length > 0) {
+      if (!confirm(`Matched ${matched}/16 teams.\nMissing: ${out.unmatched.join(', ')}\n\nSave anyway?`)) return;
+    }
+    const existing = (leagueData && leagueData.teams) || {};
+    merged = { ...existing, ...out.results };
+  }
+
+  setSyncStatus('syncing');
+  try {
+    await set(ref(db,'leagueData'), {
+      teams: encodeLeagueTeams(merged),
+      updatedAt: Date.now(),
+      updatedBy: out.mode
+    });
+    closeModal();
+    showToast(`✅ Updated from ${out.mode}`);
+  } catch(e) {
+    console.error('Save failed:', e);
+    const msg = (e && e.message) ? e.message : String(e);
+    alert(`❌ Save failed:\n\n${msg}`);
+    setSyncStatus('offline');
+  }
+};
+
+window.openLeagueSource = function() {
+  const url = prompt('Tournament page URL (optional — for your reference):',
+    (leagueData && leagueData.sourceUrl) || 'https://');
+  if (url === null) return;
+  if (url && url !== 'https://') {
+    window.open(url, '_blank');
+  }
+};
+
+window.openEditTeamRow = function(teamName) {
+  const existing = (leagueData && leagueData.teams && leagueData.teams[teamName]) || { p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0 };
+
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Edit: ${teamName}</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:14px;">Update numbers manually. Points auto-calculate from W×3 + D.</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Kampe (K)</label>
+            <input type="number" min="0" class="form-input" id="tP" value="${existing.p}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Vundet (V)</label>
+            <input type="number" min="0" class="form-input" id="tW" value="${existing.w}">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Uafgjort (U)</label>
+            <input type="number" min="0" class="form-input" id="tD" value="${existing.d}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Nedlag (N)</label>
+            <input type="number" min="0" class="form-input" id="tL" value="${existing.l}">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Mål for</label>
+            <input type="number" min="0" class="form-input" id="tGF" value="${existing.gf}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Mål imod</label>
+            <input type="number" min="0" class="form-input" id="tGA" value="${existing.ga}">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Points (auto = W×3 + D, or override)</label>
+          <input type="number" min="0" class="form-input" id="tPts" value="${existing.pts}">
+        </div>
+        <button class="submit-btn" onclick="saveTeamRow('${teamName.replace(/'/g,"\\'")}')">Save</button>
+        <button class="cancel-btn" onclick="closeModal()">Cancel</button>
+      </div>
+    </div>`;
+
+  // Auto-update points when W or D changes
+  const syncPts = () => {
+    const w = parseInt(document.getElementById('tW').value)||0;
+    const d = parseInt(document.getElementById('tD').value)||0;
+    document.getElementById('tPts').value = w*3 + d;
+  };
+  document.getElementById('tW').addEventListener('input', syncPts);
+  document.getElementById('tD').addEventListener('input', syncPts);
+};
+
+window.saveTeamRow = async function(teamName) {
+  const row = {
+    p:  parseInt(document.getElementById('tP').value)||0,
+    w:  parseInt(document.getElementById('tW').value)||0,
+    d:  parseInt(document.getElementById('tD').value)||0,
+    l:  parseInt(document.getElementById('tL').value)||0,
+    gf: parseInt(document.getElementById('tGF').value)||0,
+    ga: parseInt(document.getElementById('tGA').value)||0,
+    pts:parseInt(document.getElementById('tPts').value)||0,
+  };
+
+  const existing = (leagueData && leagueData.teams) || {};
+  const merged = { ...existing, [teamName]: row };
+
+  setSyncStatus('syncing');
+  try {
+    await set(ref(db,'leagueData'), {
+      teams: encodeLeagueTeams(merged),
+      updatedAt: Date.now(),
+      updatedBy: 'edit'
+    });
+    closeModal();
+    showToast(`✅ Saved ${teamName.length > 20 ? teamName.slice(0,18)+'…' : teamName}`);
+  } catch(e) {
+    console.error('Save failed:', e);
+    const msg = (e && e.message) ? e.message : String(e);
+    alert(`❌ Save failed:\n\n${msg}`);
+    setSyncStatus('offline');
+  }
+};
+
+// ============================================================
+// STATS TAB — top scorers, top assists, team totals
+// ============================================================
+function renderStats() {
+  const c = document.getElementById('mainContent');
+  const arr = Object.entries(players).map(([id,p])=>({id,...p}));
+
+  // Build per-player totals across all games
+  const totalGoals = pid => Object.values(games).reduce((s,g)=>s+(g.scorers&&g.scorers[pid]?g.scorers[pid]:0),0);
+  const totalAssists = pid => Object.values(games).reduce((s,g)=>s+(g.assists&&g.assists[pid]?g.assists[pid]:0),0);
+  const gPlayed = pid => Object.values(games).filter(g=>g.players&&g.players[pid]).length;
+
+  const withStats = arr.map(p => ({
+    ...p,
+    goals: totalGoals(p.id),
+    assists: totalAssists(p.id),
+    games: gPlayed(p.id),
+  }));
+
+  const topScorers = [...withStats].filter(p=>p.goals>0).sort((a,b) => b.goals-a.goals || b.assists-a.assists).slice(0,10);
+  const topAssists = [...withStats].filter(p=>p.assists>0).sort((a,b) => b.assists-a.assists || b.goals-a.goals).slice(0,10);
+
+  // Team totals
+  const playedGames = Object.values(games).filter(g => g.result && /^\d+-\d+$/.test(g.result));
+  let teamGoals = 0, teamConceded = 0, teamWins = 0, teamDraws = 0, teamLosses = 0;
+  playedGames.forEach(g => {
+    const [hv, av] = g.result.split('-').map(Number);
+    teamGoals += hv; teamConceded += av;
+    if (hv>av) teamWins++; else if (hv<av) teamLosses++; else teamDraws++;
+  });
+  const totalPlayerGoals = withStats.reduce((s,p)=>s+p.goals,0);
+  const totalPlayerAssists = withStats.reduce((s,p)=>s+p.assists,0);
+  const avgGoalsPerGame = playedGames.length ? (teamGoals/playedGames.length).toFixed(1) : '—';
+
+  let h = `<div class="section-header">
+    <div class="section-title">Stats</div>
+    <span class="count-badge">${playedGames.length} kampe spillet</span>
+  </div>`;
+
+  // Team totals hero card
+  h += `<div style="background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);padding:16px;margin-bottom:16px;">
+    <div style="font-size:11px;color:var(--text3);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:12px;">Team Totals</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+      <div style="text-align:center;">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:32px;color:#8ae8a0;line-height:1;">${teamGoals}</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:4px;text-transform:uppercase;letter-spacing:0.05em;">Goals</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:32px;color:#f09090;line-height:1;">${teamConceded}</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:4px;text-transform:uppercase;letter-spacing:0.05em;">Conceded</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:32px;color:#ffd700;line-height:1;">${avgGoalsPerGame}</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:4px;text-transform:uppercase;letter-spacing:0.05em;">Avg/Game</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+      <div style="flex:1;text-align:center;">
+        <div style="font-size:18px;font-weight:700;color:#8ae8a0;">${teamWins}</div>
+        <div style="font-size:10px;color:var(--text3);">Wins</div>
+      </div>
+      <div style="flex:1;text-align:center;">
+        <div style="font-size:18px;font-weight:700;color:#f0d060;">${teamDraws}</div>
+        <div style="font-size:10px;color:var(--text3);">Draws</div>
+      </div>
+      <div style="flex:1;text-align:center;">
+        <div style="font-size:18px;font-weight:700;color:#f09090;">${teamLosses}</div>
+        <div style="font-size:10px;color:var(--text3);">Losses</div>
+      </div>
+    </div>
+  </div>`;
+
+  // Top scorers
+  h += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;margin-top:4px;">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:0.05em;color:var(--accent);">⚽ Top Scorers</div>
+    <span class="count-badge">${totalPlayerGoals} total</span>
+  </div>`;
+
+  if (!topScorers.length) {
+    h += `<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px;background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);margin-bottom:20px;">No goals scored yet</div>`;
+  } else {
+    h += `<div style="background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);overflow:hidden;margin-bottom:20px;">`;
+    topScorers.forEach((p, i) => {
+      const rankBg = i===0 ? '#ffd700' : i===1 ? '#c0c0c0' : i===2 ? '#cd7f32' : 'var(--surface3)';
+      const rankColor = i<=2 ? '#111' : 'var(--text3)';
+      const av = p.photo ? `<img src="${p.photo}" style="width:100%;height:100%;object-fit:cover;">` : initials(p.name);
+      h += `<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;${i<topScorers.length-1?'border-bottom:1px solid var(--border);':''}">
+        <div style="width:26px;height:26px;border-radius:50%;background:${rankBg};color:${rankColor};font-family:'Bebas Neue',sans-serif;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${i+1}</div>
+        <div style="width:40px;height:40px;border-radius:50%;background:var(--surface3);border:2px solid var(--border2);overflow:hidden;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:15px;color:var(--green);flex-shrink:0;">${av}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.name}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px;">${p.games} games · ${p.assists} assists · ${p.games>0?(p.goals/p.games).toFixed(2):'0'} per game</div>
+        </div>
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:#ffd700;line-height:1;">${p.goals}</div>
+      </div>`;
+    });
+    h += `</div>`;
+  }
+
+  // Top assists
+  h += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:0.05em;color:var(--accent);">👟 Top Assists</div>
+    <span class="count-badge">${totalPlayerAssists} total</span>
+  </div>`;
+
+  if (!topAssists.length) {
+    h += `<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px;background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);margin-bottom:20px;">No assists yet</div>`;
+  } else {
+    h += `<div style="background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);overflow:hidden;margin-bottom:20px;">`;
+    topAssists.forEach((p, i) => {
+      const rankBg = i===0 ? '#60aaff' : i===1 ? '#8ac4ff' : i===2 ? '#a0d0ff' : 'var(--surface3)';
+      const rankColor = i<=2 ? '#111' : 'var(--text3)';
+      const av = p.photo ? `<img src="${p.photo}" style="width:100%;height:100%;object-fit:cover;">` : initials(p.name);
+      h += `<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;${i<topAssists.length-1?'border-bottom:1px solid var(--border);':''}">
+        <div style="width:26px;height:26px;border-radius:50%;background:${rankBg};color:${rankColor};font-family:'Bebas Neue',sans-serif;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${i+1}</div>
+        <div style="width:40px;height:40px;border-radius:50%;background:var(--surface3);border:2px solid var(--border2);overflow:hidden;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:15px;color:var(--green);flex-shrink:0;">${av}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.name}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px;">${p.games} games · ${p.goals} goals</div>
+        </div>
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:#60aaff;line-height:1;">${p.assists}</div>
+      </div>`;
+    });
+    h += `</div>`;
+  }
+
+  // All players with contributions (goals + assists combined)
+  const contributors = withStats.filter(p => p.goals+p.assists > 0)
+    .sort((a,b)=>(b.goals+b.assists)-(a.goals+a.assists))
+    .slice(0,15);
+  if (contributors.length) {
+    h += `<div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:0.05em;color:var(--accent);margin-bottom:10px;">🎯 Goal Contributions</div>
+      <div style="background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);overflow:hidden;margin-bottom:20px;">`;
+    contributors.forEach((p, i) => {
+      const total = p.goals + p.assists;
+      h += `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;${i<contributors.length-1?'border-bottom:1px solid var(--border);':''}">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.name}</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px;">⚽ ${p.goals} · 👟 ${p.assists}</div>
+        </div>
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);">${total}</div>
+      </div>`;
+    });
+    h += `</div>`;
+  }
 
   c.innerHTML = h;
 }
@@ -446,7 +983,7 @@ function renderGames() {
     arr.forEach(g => {
       const dt = formatDate(g.date);
       const sids = g.players ? Object.keys(g.players) : [];
-      const n = sids.length, MAX=15, pct=Math.min(n/MAX*100,100), full=n>=MAX;
+      const n = sids.length, MAX=10, pct=Math.min(n/MAX*100,100), full=n>=MAX;
       let avs = sids.map(pid=>{ const pl=players[pid]; return pl?miniAv({...pl,id:pid},g.scorers&&g.scorers[pid]?g.scorers[pid]:0, g.assists&&g.assists[pid]?g.assists[pid]:0):''; }).join('');
       let rb='';
       if (g.result) {
@@ -465,7 +1002,7 @@ function renderGames() {
         <div class="game-roster-section">
           <div class="progress-label"><span>Squad</span><span class="count">${n} / ${MAX} players</span></div>
           <div class="progress-bar"><div class="progress-fill${full?' full':''}" style="width:${pct}%"></div></div>
-          ${full?'<div class="squad-full">⭐ Squad Full — 15/15</div>':''}
+          ${full?'<div class="squad-full">⭐ Squad Full — 10/10</div>':''}
           <div class="avatars-row">${avs||'<span style="font-size:12px;color:var(--text3)">No players signed up yet</span>'}</div>
         </div>
         <div class="game-actions">
@@ -622,7 +1159,7 @@ window.openJoinGame = gameId => {
     <div class="modal">
       <div class="modal-handle"></div>
       <div class="modal-title">Sign Up — vs ${game.opponent}</div>
-      <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Tap to add/remove players (max 15)</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Tap to add/remove players (max 10)</div>
       <div class="player-selector">${list}</div>
       <button class="submit-btn" onclick="closeModal()" style="margin-top:16px">Done</button>
     </div>
@@ -633,7 +1170,7 @@ window.togglePlayer = async (gameId, playerId) => {
   const game=games[gameId]; if (!game) return;
   const sids=game.players?Object.keys(game.players):[];
   const isIn=sids.includes(playerId);
-  if (!isIn&&sids.length>=15){showToast('Squad is full! (15/15)');return;}
+  if (!isIn&&sids.length>=10){showToast('Squad is full! (10/10)');return;}
   setSyncStatus('syncing');
   try {
     if (isIn) {
