@@ -51,6 +51,19 @@
   .content { padding: 16px 20px 100px; }
   .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
   .section-title { font-family: 'Bebas Neue', sans-serif; font-size: 28px; letter-spacing: 0.05em; color: var(--accent); }
+  .next-game-banner { position: relative; background: linear-gradient(135deg, #c8102e 0%, #a30c24 100%); border-radius: 14px; padding: 14px 16px; margin-bottom: 18px; color: #fff; cursor: pointer; box-shadow: 0 2px 6px rgba(200,16,46,0.18); transition: transform 0.15s ease, box-shadow 0.15s ease; overflow: hidden; }
+  .next-game-banner:active { transform: scale(0.985); box-shadow: 0 1px 3px rgba(200,16,46,0.18); }
+  .next-game-pulse::before { content:''; position:absolute; }
+  .next-game-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+  .next-game-when { font-family: 'DM Sans', sans-serif; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.85; font-weight: 600; }
+  .next-game-time { font-family: 'Bebas Neue', sans-serif; font-size: 18px; letter-spacing: 0.04em; }
+  .next-game-vs { font-family: 'Bebas Neue', sans-serif; font-size: 24px; letter-spacing: 0.03em; line-height: 1.1; margin-bottom: 4px; }
+  .next-game-meta { font-size: 11px; opacity: 0.85; margin-bottom: 10px; }
+  .next-game-progress { height: 4px; background: rgba(255,255,255,0.25); border-radius: 2px; overflow: hidden; margin-bottom: 8px; }
+  .next-game-fill { height: 100%; background: #fff; border-radius: 2px; transition: width 0.4s ease; }
+  .next-game-fill.full { background: #ffd700; }
+  .next-game-foot { display: flex; justify-content: space-between; font-size: 11px; opacity: 0.95; font-weight: 500; }
+  .next-game-cta { opacity: 1; font-weight: 600; }
   .count-badge { background: var(--surface2); color: var(--text2); font-size: 12px; padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border); }
   .add-btn { width: 44px; height: 44px; background: var(--green); border: none; border-radius: 50%; color: #fff; font-size: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: transform 0.15s; flex-shrink: 0; }
   .add-btn:active { transform: scale(0.92); }
@@ -95,6 +108,8 @@
   .result-btn { padding: 10px 12px; background: var(--surface3); border: 1px solid var(--border); border-radius: 10px; color: var(--text2); font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; }
   .leave-btn { padding: 10px 12px; background: #fef2f3; border: 1px solid #fecaca; border-radius: 10px; color: #c8102e; font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.15s; }
   .leave-btn:active { background: #fde0e3; }
+  .share-btn { padding: 10px 12px; background: var(--surface3); border: 1px solid var(--border); border-radius: 10px; color: var(--text2); font-size: 14px; cursor: pointer; transition: all 0.15s; }
+  .share-btn:active { transform: scale(0.95); background: var(--green-dim); border-color: var(--green); }
   .del-btn { width: 40px; height: 40px; background: var(--surface3); border: 1px solid var(--border); border-radius: 10px; color: var(--text3); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 100; display: flex; align-items: flex-end; justify-content: center; animation: fadeIn 0.2s ease; }
   @keyframes fadeIn { from{opacity:0}to{opacity:1} }
@@ -473,16 +488,48 @@ function renderTable() {
   <div style="font-size:11px;color:var(--text3);margin-bottom:10px;padding:0 2px;">${updatedLine}</div>
 
   <div style="background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);overflow:hidden;">
-    <div style="display:grid;grid-template-columns:24px 1fr 22px 22px 22px 22px 44px 32px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--surface3);gap:4px;">
+    <div style="display:grid;grid-template-columns:24px 1fr 22px 22px 22px 22px 60px 32px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--surface3);gap:4px;">
       <span style="font-size:10px;color:var(--text3);font-weight:600">#</span>
       <span style="font-size:10px;color:var(--text3);font-weight:600">Hold</span>
       <span style="font-size:10px;color:var(--text3);font-weight:600;text-align:center">K</span>
       <span style="font-size:10px;color:var(--text3);font-weight:600;text-align:center">V</span>
       <span style="font-size:10px;color:var(--text3);font-weight:600;text-align:center">U</span>
       <span style="font-size:10px;color:var(--text3);font-weight:600;text-align:center">N</span>
-      <span style="font-size:10px;color:var(--text3);font-weight:600;text-align:center">Score</span>
+      <span style="font-size:10px;color:var(--text3);font-weight:600;text-align:center">Form</span>
       <span style="font-size:10px;color:var(--text3);font-weight:600;text-align:right">Pts</span>
     </div>`;
+
+  // Compute last-5 form for each team from leagueData.matches
+  const allMatches = (leagueData && Array.isArray(leagueData.matches)) ? leagueData.matches : [];
+  const teamForm = {};
+  leagueTeams.forEach(t => teamForm[t.name] = []);
+
+  // Order matches oldest-first and build sequential form per team
+  const toDate = s => {
+    const [d,mo,y] = (s||'').split('-').map(Number);
+    return new Date(y||2026, (mo||1)-1, d||1).getTime();
+  };
+  const playedSorted = allMatches
+    .filter(m => m.played && m.hg != null && m.ag != null)
+    .sort((a,b) => toDate(a.date) - toDate(b.date));
+
+  playedSorted.forEach(m => {
+    if (teamForm[m.home]) {
+      teamForm[m.home].push(m.hg > m.ag ? 'W' : (m.hg < m.ag ? 'L' : 'D'));
+    }
+    if (teamForm[m.away]) {
+      teamForm[m.away].push(m.ag > m.hg ? 'W' : (m.ag < m.hg ? 'L' : 'D'));
+    }
+  });
+
+  const formDots = (resArr) => {
+    if (!resArr || !resArr.length) return '<span style="font-size:9px;color:var(--text3);">—</span>';
+    const last5 = resArr.slice(-5);
+    return last5.map(r => {
+      const color = r === 'W' ? '#1f8a3e' : r === 'D' ? '#b88a00' : '#c8102e';
+      return `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${color};margin:0 1px;"></span>`;
+    }).join('');
+  };
 
   sorted.forEach((t, i) => {
     const isUs = t.name === ourName;
@@ -490,15 +537,14 @@ function renderTable() {
     const nameColor = isUs ? 'color:var(--green);font-weight:600;' : '';
     const ptsColor = isUs ? 'color:var(--green);' : 'color:var(--accent);';
     const rankColor = t.rank<=3 ? 'color:#d4a017;' : 'color:var(--text3);';
-    const scoreStr = `${t.gf}-${t.ga}`;
-    h += `<div onclick="openEditTeamRow('${t.name.replace(/'/g,"\\'")}')" style="display:grid;grid-template-columns:24px 1fr 22px 22px 22px 22px 44px 32px;padding:10px 12px;border-bottom:1px solid var(--border);${bg}align-items:center;gap:4px;cursor:pointer;">
+    h += `<div onclick="openEditTeamRow('${t.name.replace(/'/g,"\\'")}')" style="display:grid;grid-template-columns:24px 1fr 22px 22px 22px 22px 60px 32px;padding:10px 12px;border-bottom:1px solid var(--border);${bg}align-items:center;gap:4px;cursor:pointer;">
       <span style="font-size:12px;font-weight:600;${rankColor}">${t.rank}</span>
       <span style="font-size:12px;${nameColor}white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${shortName(t.name)}</span>
       <span style="font-size:11px;color:var(--text2);text-align:center">${t.p}</span>
       <span style="font-size:11px;color:#1f8a3e;text-align:center">${t.w}</span>
       <span style="font-size:11px;color:#b88a00;text-align:center">${t.d}</span>
       <span style="font-size:11px;color:#c8102e;text-align:center">${t.l}</span>
-      <span style="font-size:11px;color:var(--text2);text-align:center;white-space:nowrap;">${scoreStr}</span>
+      <span style="text-align:center;line-height:1;">${formDots(teamForm[t.name])}</span>
       <span style="font-size:13px;font-weight:700;text-align:right;${ptsColor}">${t.pts}</span>
     </div>`;
   });
@@ -508,7 +554,11 @@ function renderTable() {
     <span style="color:var(--green);font-weight:600;">━</span> GH Retail &nbsp;|&nbsp;
     <span style="color:#d4a017;">●</span> Top 3 &nbsp;|&nbsp;
     K=Kampe · V=Vundet · U=Uafgjort · N=Nedlag<br>
-    <span style="color:var(--text3);">Tap a team to edit its numbers manually</span>
+    <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#1f8a3e;margin:0 1px;"></span>
+    <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#b88a00;margin:0 1px;"></span>
+    <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#c8102e;margin:0 1px;"></span>
+    Form = sidste 5 kampe (W·D·L) &nbsp;|&nbsp;
+    <span style="color:var(--text3);">Tryk på et hold for at redigere</span>
   </div>`;
 
   c.innerHTML = h;
@@ -1096,6 +1146,72 @@ function miniAv(p, goals=0, assists=0) {
   return `<div class="mini-avatar" title="${p.name} ${goals>0?'⚽'+goals:''} ${assists>0?'👟'+assists:''}">${c}${b}</div>`;
 }
 
+function getNextGame() {
+  const now = Date.now();
+  const upcoming = Object.entries(games)
+    .map(([id, g]) => ({ id, ...g }))
+    .filter(g => {
+      if (!g.date) return false;
+      // Convert YYYY-MM-DD + HH:MM to timestamp
+      const dt = new Date(`${g.date}T${g.time||'00:00'}:00`);
+      return dt.getTime() > now - 2*60*60*1000; // include games started in last 2h
+    })
+    .sort((a,b) => {
+      const da = new Date(`${a.date}T${a.time||'00:00'}:00`);
+      const db = new Date(`${b.date}T${b.time||'00:00'}:00`);
+      return da - db;
+    });
+  return upcoming[0] || null;
+}
+
+function nextGameBannerHtml() {
+  const g = getNextGame();
+  if (!g) return '';
+
+  const dt = new Date(`${g.date}T${g.time||'00:00'}:00`);
+  const now = new Date();
+  const diffMs = dt - now;
+  const diffH = diffMs / 36e5;
+  const diffD = diffMs / (24*36e5);
+
+  let when;
+  if (diffH < -2) when = 'In progress';
+  else if (diffH < 0) when = `Starting now`;
+  else if (diffH < 1) when = `In ${Math.round(diffH*60)} min`;
+  else if (diffH < 6) when = `In ${Math.round(diffH)}h`;
+  else if (diffD < 1) {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const gd = new Date(dt); gd.setHours(0,0,0,0);
+    when = (gd.getTime() === today.getTime()) ? `Today` : `Tomorrow`;
+  }
+  else if (diffD < 2) when = 'Tomorrow';
+  else if (diffD < 7) when = `In ${Math.ceil(diffD)} days`;
+  else {
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    when = `${dt.getDate()} ${months[dt.getMonth()]}`;
+  }
+
+  const sids = g.players ? Object.keys(g.players) : [];
+  const n = sids.length, MAX = 10;
+  const pct = Math.min(n/MAX*100, 100);
+  const full = n >= MAX;
+  const pulseClass = (diffH > 0 && diffH < 24) ? ' next-game-pulse' : '';
+
+  return `<div class="next-game-banner${pulseClass}" onclick="showTab('games');">
+    <div class="next-game-row">
+      <div class="next-game-when">${when}</div>
+      <div class="next-game-time">${g.time || '--:--'}</div>
+    </div>
+    <div class="next-game-vs">vs ${g.opponent}</div>
+    <div class="next-game-meta">📍 ${displayVenue(g.address || '')}</div>
+    <div class="next-game-progress"><div class="next-game-fill${full?' full':''}" style="width:${pct}%"></div></div>
+    <div class="next-game-foot">
+      <span>${full ? '⭐ Squad full' : `${n} of ${MAX} signed up`}</span>
+      <span class="next-game-cta">${full ? 'View →' : 'Sign up →'}</span>
+    </div>
+  </div>`;
+}
+
 function renderPlayers() {
   const c = document.getElementById('mainContent');
   const arr = Object.entries(players).map(([id,p])=>({id,...p}));
@@ -1103,7 +1219,9 @@ function renderPlayers() {
   const totalAssists = pid => Object.values(games).reduce((s,g)=>s+(g.assists&&g.assists[pid]?g.assists[pid]:0),0);
   const gPlayed = pid => Object.values(games).filter(g=>g.players&&g.players[pid]).length;
 
-  let h = `<div class="section-header">
+  let h = nextGameBannerHtml();
+
+  h += `<div class="section-header">
     <div class="section-title">Players</div>
     <div style="display:flex;gap:8px;align-items:center;">
       <span class="count-badge">${arr.length}</span>
@@ -1115,7 +1233,7 @@ function renderPlayers() {
     h += `<div class="empty"><div class="empty-icon">👤</div><div class="empty-text">No players yet.<br>Add the first player!</div></div>`;
   } else {
     arr.forEach(p => {
-      h += `<div class="player-card">
+      h += `<div class="player-card" onclick="openPlayerProfile('${p.id}')" style="cursor:pointer;">
         ${avatarEl(p)}
         <div class="player-info">
           <div class="player-name">${p.name}</div>
@@ -1126,7 +1244,7 @@ function renderPlayers() {
             <div class="stat-chip">🎮 <span class="val">${gPlayed(p.id)}</span> games</div>
           </div>
         </div>
-        <div class="card-actions">
+        <div class="card-actions" onclick="event.stopPropagation()">
           <button class="icon-btn" onclick="openEditPlayer('${p.id}')">✏️</button>
           <button class="icon-btn" onclick="deletePlayer('${p.id}')">🗑️</button>
         </div>
@@ -1157,7 +1275,8 @@ function renderGames() {
       let rb='';
       if (g.result) {
         const [hv,av]=g.result.split('-').map(Number);
-        rb=`<div class="game-result-badge ${hv>av?'win':hv<av?'loss':'draw'}">${g.result}</div>`;
+        const woTag = g.walkover ? `<span style="display:block;font-size:8px;line-height:1;letter-spacing:0.1em;font-weight:600;opacity:0.85;margin-top:1px;">WO</span>` : '';
+        rb=`<div class="game-result-badge ${hv>av?'win':hv<av?'loss':'draw'}" style="text-align:center;">${g.result}${woTag}</div>`;
       }
       h += `<div class="game-card">
         <div class="game-header">
@@ -1178,6 +1297,7 @@ function renderGames() {
           <button class="join-btn"${full?' disabled':''} onclick="openJoinGame('${g.id}')">${full?'🔒 Full':'+ Sign Up'}</button>
           <button class="leave-btn" onclick="openLeaveGame('${g.id}')">− Leave</button>
           <button class="result-btn" onclick="openResult('${g.id}')">📊 Result</button>
+          <button class="share-btn" onclick="shareGame('${g.id}')" title="Share">📤</button>
         </div>
       </div>`;
     });
@@ -1187,6 +1307,128 @@ function renderGames() {
 
 window.openAddPlayer = () => { editingPlayer=null; showPlayerModal(); };
 window.openEditPlayer = id => { editingPlayer={id,...players[id]}; showPlayerModal(); };
+
+window.openPlayerProfile = playerId => {
+  const p = players[playerId];
+  if (!p) return;
+
+  // Gather this player's game history
+  const history = Object.entries(games)
+    .filter(([gid, g]) => g.players && g.players[playerId])
+    .map(([gid, g]) => {
+      const goals = (g.scorers && g.scorers[playerId]) || 0;
+      const assists = (g.assists && g.assists[playerId]) || 0;
+      let outcome = null, ourScore = null, oppScore = null;
+      if (g.result && /^\d+-\d+$/.test(g.result)) {
+        const [hg, ag] = g.result.split('-').map(Number);
+        ourScore = hg; oppScore = ag;
+        outcome = hg > ag ? 'W' : (hg < ag ? 'L' : 'D');
+      }
+      return { gid, ...g, goals, assists, outcome, ourScore, oppScore };
+    })
+    .sort((a,b) => {
+      const da = new Date(`${a.date}T${a.time||'00:00'}:00`);
+      const db = new Date(`${b.date}T${b.time||'00:00'}:00`);
+      return db - da;
+    });
+
+  const totalGoals = history.reduce((s,h)=>s+h.goals,0);
+  const totalAssists = history.reduce((s,h)=>s+h.assists,0);
+  const totalGames = history.length;
+  const playedHist = history.filter(h => h.outcome);
+  const wins = playedHist.filter(h => h.outcome === 'W').length;
+  const draws = playedHist.filter(h => h.outcome === 'D').length;
+  const losses = playedHist.filter(h => h.outcome === 'L').length;
+
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const fmtDate = d => {
+    if (!d) return '';
+    const parts = d.split('-');
+    if (parts.length !== 3) return d;
+    return `${parseInt(parts[2])} ${months[parseInt(parts[1])-1]||''}`;
+  };
+
+  let historyHtml = '';
+  if (!history.length) {
+    historyHtml = `<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px;">No games played yet</div>`;
+  } else {
+    historyHtml = history.map(h => {
+      const outBg = h.outcome === 'W' ? '#e9f6ec' : h.outcome === 'L' ? '#fef2f3' : h.outcome === 'D' ? '#fef9e7' : 'var(--surface3)';
+      const outColor = h.outcome === 'W' ? '#1f8a3e' : h.outcome === 'L' ? '#c8102e' : h.outcome === 'D' ? '#b88a00' : 'var(--text3)';
+      const outLabel = h.outcome || '–';
+      const scoreLabel = h.outcome ? `${h.ourScore}–${h.oppScore}` : 'TBD';
+      const contribBits = [];
+      if (h.goals > 0) contribBits.push(`<span style="color:#d4a017;">⚽ ${h.goals}</span>`);
+      if (h.assists > 0) contribBits.push(`<span style="color:#1f6feb;">👟 ${h.assists}</span>`);
+      const contrib = contribBits.length ? contribBits.join(' · ') : '<span style="color:var(--text3);">—</span>';
+
+      return `<div style="display:grid;grid-template-columns:36px 1fr auto auto;gap:10px;padding:10px 4px;border-bottom:1px solid var(--border);align-items:center;">
+        <div style="text-align:center;background:${outBg};color:${outColor};border-radius:6px;padding:3px 6px;font-family:'Bebas Neue',sans-serif;font-size:14px;line-height:1.1;">${outLabel}<div style="font-size:9px;font-family:'DM Sans',sans-serif;font-weight:600;letter-spacing:0.05em;">${scoreLabel}</div></div>
+        <div>
+          <div style="font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">vs ${h.opponent}</div>
+          <div style="font-size:10px;color:var(--text3);">${fmtDate(h.date)}</div>
+        </div>
+        <div style="font-size:11px;text-align:right;white-space:nowrap;">${contrib}</div>
+      </div>`;
+    }).join('');
+  }
+
+  // Star/sparkline-ish summary
+  const goalsPerGame = totalGames > 0 ? (totalGoals/totalGames).toFixed(2) : '0';
+  const winRate = playedHist.length > 0 ? Math.round(wins/playedHist.length*100) : 0;
+
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+      <div class="modal" style="padding-bottom:60px;">
+        <div class="modal-handle"></div>
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;">
+          ${avatarEl(p, 64)}
+          <div style="flex:1;min-width:0;">
+            <div style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:0.03em;color:var(--accent);line-height:1.1;">${p.name}</div>
+            <div style="font-size:12px;color:var(--text3);margin-top:2px;">${p.contact || ''}</div>
+          </div>
+          <button onclick="openEditPlayer('${p.id||playerId}')" style="background:var(--surface3);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:14px;cursor:pointer;color:var(--text2);">✏️</button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;">
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;">
+            <div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:#d4a017;line-height:1;">${totalGoals}</div>
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-top:3px;">Goals</div>
+          </div>
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;">
+            <div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:#1f6feb;line-height:1;">${totalAssists}</div>
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-top:3px;">Assists</div>
+          </div>
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;">
+            <div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--accent);line-height:1;">${totalGames}</div>
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-top:3px;">Games</div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:18px;">
+          <div style="text-align:center;padding:8px;background:#e9f6ec;border-radius:8px;">
+            <div style="font-size:16px;font-weight:600;color:#1f8a3e;">${wins}</div>
+            <div style="font-size:9px;color:#1f8a3e;text-transform:uppercase;">Wins</div>
+          </div>
+          <div style="text-align:center;padding:8px;background:#fef9e7;border-radius:8px;">
+            <div style="font-size:16px;font-weight:600;color:#b88a00;">${draws}</div>
+            <div style="font-size:9px;color:#b88a00;text-transform:uppercase;">Draws</div>
+          </div>
+          <div style="text-align:center;padding:8px;background:#fef2f3;border-radius:8px;">
+            <div style="font-size:16px;font-weight:600;color:#c8102e;">${losses}</div>
+            <div style="font-size:9px;color:#c8102e;text-transform:uppercase;">Losses</div>
+          </div>
+        </div>
+
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;font-weight:600;">Game History</div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:0 10px;margin-bottom:18px;">
+          ${historyHtml}
+        </div>
+
+        <button class="cancel-btn" onclick="closeModal()">Close</button>
+      </div>
+    </div>`;
+};
 
 function showPlayerModal() {
   const p=editingPlayer, isEdit=!!p;
@@ -1305,6 +1547,48 @@ window.deleteGame = async id => {
   setSyncStatus('syncing');
   try { await remove(ref(db,`games/${id}`)); showToast('Game deleted'); }
   catch(e){showToast('Error. Try again.');}
+};
+
+window.shareGame = gameId => {
+  const g = games[gameId];
+  if (!g) return;
+
+  // Format the date nicely
+  let dateStr = g.date || '';
+  let dayLabel = '';
+  if (g.date) {
+    const dt = new Date(`${g.date}T${g.time||'00:00'}:00`);
+    const days = ['søn','man','tir','ons','tor','fre','lør'];
+    const months = ['jan','feb','mar','apr','maj','jun','jul','aug','sep','okt','nov','dec'];
+    dayLabel = `${days[dt.getDay()]} ${dt.getDate()}. ${months[dt.getMonth()]}`;
+  }
+
+  const sids = g.players ? Object.keys(g.players) : [];
+  const n = sids.length, MAX = 10;
+  const venue = displayVenue(g.address || '');
+  const appUrl = window.location.origin + window.location.pathname;
+
+  let msg = `⚽ *GH Retail vs ${g.opponent}*\n`;
+  if (dayLabel) msg += `📅 ${dayLabel}`;
+  if (g.time) msg += ` kl. ${g.time}`;
+  msg += `\n📍 ${venue}\n`;
+  msg += `\n👥 ${n}/${MAX} tilmeldt`;
+  if (n < MAX) msg += ` — vi mangler ${MAX-n}!`;
+  msg += `\n\nTilmeld dig her: ${appUrl}`;
+
+  // Try Web Share API first (works on most modern phones, opens native share sheet)
+  if (navigator.share) {
+    navigator.share({
+      title: `GH Retail vs ${g.opponent}`,
+      text: msg,
+    }).catch(() => {
+      // User cancelled or error — fall back to WhatsApp
+      window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+    });
+  } else {
+    // Fallback for desktop / older browsers — open WhatsApp web
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+  }
 };
 
 window.openJoinGame = gameId => {
@@ -1427,18 +1711,27 @@ window.openResult = gameId => {
   }
   const pts=(game.result||'').split('-');
   const hasResult = !!game.result;
+  const isWalkover = !!game.walkover; // 'us' or 'them' if a walkover was set
   document.getElementById('modalContainer').innerHTML=`<div class="modal-overlay" onclick="if(event.target===this)closeModal()">
     <div class="modal">
       <div class="modal-handle"></div>
       <div class="modal-title">📊 Result — vs ${game.opponent}</div>
-      <div style="font-size:12px;color:var(--text3);text-align:center;margin-bottom:4px">GH FC — ${game.opponent}</div>
+      <div style="font-size:12px;color:var(--text3);text-align:center;margin-bottom:4px">GH Retail — ${game.opponent}</div>
       <div class="score-input-row">
         <input class="score-input" id="scoreHome" type="number" min="0" max="99" value="${pts[0]||''}" placeholder="0">
         <span class="score-dash">:</span>
         <input class="score-input" id="scoreAway" type="number" min="0" max="99" value="${pts[1]||''}" placeholder="0">
       </div>
+      ${isWalkover ? `<div style="text-align:center;font-size:11px;color:#b88a00;background:#fef9e7;border:1px solid #f0d060;border-radius:8px;padding:6px;margin:0 0 8px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;">⚠️ Walkover — ${isWalkover==='us'?'GH Retail':game.opponent} won 3-0</div>` : ''}
       ${shtml}
-      <button class="submit-btn" onclick="saveResult('${gameId}')" style="margin-top:16px">Save Result</button>
+
+      <div style="margin:14px 0 6px;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">Walkover</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button onclick="setWalkover('${gameId}','us')" style="flex:1;padding:10px;background:${isWalkover==='us'?'#e9f6ec':'var(--surface3)'};border:1px solid ${isWalkover==='us'?'#1f8a3e':'var(--border)'};border-radius:10px;color:${isWalkover==='us'?'#1f8a3e':'var(--text2)'};font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;">⚽ We won (3-0)</button>
+        <button onclick="setWalkover('${gameId}','them')" style="flex:1;padding:10px;background:${isWalkover==='them'?'#fef2f3':'var(--surface3)'};border:1px solid ${isWalkover==='them'?'#c8102e':'var(--border)'};border-radius:10px;color:${isWalkover==='them'?'#c8102e':'var(--text2)'};font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;">✗ They won (0-3)</button>
+      </div>
+
+      <button class="submit-btn" onclick="saveResult('${gameId}')" style="margin-top:8px">Save Result</button>
       ${hasResult ? `<button onclick="clearResult('${gameId}')" style="width:100%;padding:12px;background:#fef2f3;border:1px solid #fecaca;border-radius:12px;color:#c8102e;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px;">🗑️ Clear Result</button>` : ''}
       <button class="cancel-btn" onclick="closeModal()">Cancel</button>
     </div>
@@ -1469,12 +1762,66 @@ window.changeAssists = async (gameId, playerId, delta) => {
   } catch(e){showToast('Error.');}
 };
 
+window.setWalkover = async (gameId, who) => {
+  // who = 'us' (we won 3-0) or 'them' (we lost 0-3) or null to undo
+  const game = games[gameId];
+  if (!game) return;
+
+  const isCurrent = game.walkover === who;
+  if (isCurrent) {
+    // Tap same button again -> undo walkover
+    if (!confirm('Remove walkover for this game?')) return;
+    setSyncStatus('syncing');
+    try {
+      await update(ref(db), {
+        [`games/${gameId}/result`]: '',
+        [`games/${gameId}/walkover`]: null,
+      });
+      // Reopen modal so the user sees the change
+      openResult(gameId);
+      showToast('Walkover removed');
+    } catch(e) { showToast('Error.'); }
+    return;
+  }
+
+  const score = who === 'us' ? '3-0' : '0-3';
+  const label = who === 'us' ? 'GH Retail wins by walkover (3-0)' : `${game.opponent} wins by walkover (0-3)`;
+  if (!confirm(`Set ${label}?\n\nThis sets the score to ${score} and clears any goals/assists.`)) return;
+
+  setSyncStatus('syncing');
+  try {
+    await update(ref(db), {
+      [`games/${gameId}/result`]: score,
+      [`games/${gameId}/walkover`]: who,
+      [`games/${gameId}/scorers`]: null,
+      [`games/${gameId}/assists`]: null,
+    });
+    closeModal();
+    if (who === 'us') showWinAnimation();
+    else showLossAnimation();
+    setTimeout(() => showToast(`Walkover saved`), 100);
+  } catch(e) {
+    showToast('Error.');
+  }
+};
+
 window.saveResult = async gameId => {
   const h=document.getElementById('scoreHome').value;
   const a=document.getElementById('scoreAway').value;
+  const game = games[gameId] || {};
+  const newResult = (h!==''&&a!=='')?`${h}-${a}`:'';
+  // If user manually saved a different score than the walkover dictated, clear walkover flag
+  const wasWalkover = !!game.walkover;
+  const expectedWalkoverScore = game.walkover === 'us' ? '3-0' : (game.walkover === 'them' ? '0-3' : null);
+  const userOverrode = wasWalkover && newResult && newResult !== expectedWalkoverScore;
+
   setSyncStatus('syncing');
   try {
-    await set(ref(db,`games/${gameId}/result`),(h!==''&&a!=='')?`${h}-${a}`:'');
+    const updates = { [`games/${gameId}/result`]: newResult };
+    if (userOverrode || !newResult) {
+      updates[`games/${gameId}/walkover`] = null;
+    }
+    await update(ref(db), updates);
     closeModal();
     if (h!==''&&a!=='') {
       const hv=parseInt(h), av=parseInt(a);
@@ -1596,7 +1943,10 @@ window.clearResult = async gameId => {
   if (!confirm('Clear the result for this game?')) return;
   setSyncStatus('syncing');
   try {
-    await set(ref(db,`games/${gameId}/result`),'');
+    await update(ref(db), {
+      [`games/${gameId}/result`]: '',
+      [`games/${gameId}/walkover`]: null,
+    });
     closeModal(); showToast('Result cleared ✅');
   } catch(e){showToast('Error.');}
 };
