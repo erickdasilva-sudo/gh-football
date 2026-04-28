@@ -45,8 +45,8 @@
   .sync-dot.live { background: var(--green); box-shadow: 0 0 0 3px rgba(76,175,106,0.2); }
   .sync-dot.syncing { background: #f0b429; animation: pulse 1s infinite; }
   @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.4} }
-  .tabs { display: flex; margin: 20px 20px 0; background: var(--surface); border-radius: 12px; padding: 4px; gap: 4px; }
-  .tab { flex: 1; padding: 10px; border: none; background: transparent; color: var(--text3); font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500; border-radius: 9px; cursor: pointer; transition: all 0.2s; }
+  .tabs { display: flex; margin: 20px 20px 0; background: var(--surface); border-radius: 12px; padding: 4px; gap: 2px; }
+  .tab { flex: 1; padding: 10px 4px; border: none; background: transparent; color: var(--text3); font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500; border-radius: 9px; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
   .tab.active { background: var(--surface3); color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,0.4); }
   .content { padding: 16px 20px 100px; }
   .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
@@ -167,6 +167,7 @@
   <button class="tab" id="tabGames" onclick="showTab('games')">📅 Games</button>
   <button class="tab" id="tabTable" onclick="showTab('table')">🏆 Table</button>
   <button class="tab" id="tabStats" onclick="showTab('stats')">📊 Stats</button>
+  <button class="tab" id="tabOther" onclick="showTab('other')">🏟️ Other</button>
 </div>
 
 <div class="content" id="mainContent">
@@ -185,6 +186,9 @@
   </button>
   <button class="nav-item" id="navStats" onclick="showTab('stats')">
     <span class="nav-icon">📊</span>Stats
+  </button>
+  <button class="nav-item" id="navOther" onclick="showTab('other')">
+    <span class="nav-icon">🏟️</span>Other
   </button>
 </div>
 
@@ -211,8 +215,45 @@ const db = getDatabase(fbApp);
 let currentTab = 'players';
 let players = {};
 let games = {};
-let leagueData = null; // { teams: {teamName: {p,w,d,l,gf,ga,pts}}, updatedAt: timestamp, updatedBy: string }
+let leagueData = null; // { teams: {teamName: stats}, matches: [{date,time,venue,home,away,hg,ag,round}], updatedAt, updatedBy }
 let editingPlayer = null;
+
+// ============================================================
+// VENUE / ADDRESS HELPERS — maps tournament venue strings to
+// real addresses for Google Maps directions.
+// ============================================================
+const venueAddressOverrides = {
+  // Tournament shows "Lufthavnen - Bane 1" but the real address is:
+  'Lufthavnen': 'Tømmerup Stationsvej 122, 2770 Kastrup',
+  // Add more here as you learn the real addresses
+};
+
+function getMapsUrl(venueText) {
+  if (!venueText) return null;
+  // Check if any override key is in the venue string
+  for (const [key, realAddr] of Object.entries(venueAddressOverrides)) {
+    if (venueText.includes(key)) {
+      // Append the bane suffix if present (e.g. "- Bane 1")
+      const baneMatch = venueText.match(/Bane\s*\d+/i);
+      const fullAddr = baneMatch ? `${realAddr} (${baneMatch[0]})` : realAddr;
+      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(realAddr)}`;
+    }
+  }
+  // Fallback: search for the venue text as-is
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venueText)}`;
+}
+
+function displayVenue(venueText) {
+  if (!venueText) return '';
+  // Show the friendlier address for known venues
+  for (const [key, realAddr] of Object.entries(venueAddressOverrides)) {
+    if (venueText.includes(key)) {
+      const baneMatch = venueText.match(/Bane\s*\d+/i);
+      return baneMatch ? `${realAddr} - ${baneMatch[0]}` : realAddr;
+    }
+  }
+  return venueText;
+}
 
 function setSyncStatus(s) {
   const dot = document.getElementById('syncDot');
@@ -268,10 +309,19 @@ onValue(ref(db,'leagueData'), snap => {
   else {
     leagueData = {
       ...raw,
-      teams: decodeLeagueTeams(raw.teams)
+      teams: decodeLeagueTeams(raw.teams),
+      matches: Array.isArray(raw.matches) ? raw.matches.map(m => ({
+        ...m,
+        home: decodeTeamKey(m.home),
+        away: decodeTeamKey(m.away),
+        hg: m.hg === -1 ? null : m.hg,
+        ag: m.ag === -1 ? null : m.ag,
+      })) : []
     };
   }
   if (currentTab==='table') renderTable();
+  else if (currentTab==='stats') renderStats();
+  else if (currentTab==='other') renderOther();
 }, () => {});
 
 function hideSplash() {
@@ -306,7 +356,7 @@ function closeModal() { document.getElementById('modalContainer').innerHTML=''; 
 
 window.showTab = function(tab) {
   currentTab = tab;
-  ['Players','Games','Table','Stats'].forEach(n => {
+  ['Players','Games','Table','Stats','Other'].forEach(n => {
     const tl = n.toLowerCase();
     const tabEl = document.getElementById('tab'+n);
     const navEl = document.getElementById('nav'+n);
@@ -316,6 +366,7 @@ window.showTab = function(tab) {
   if (tab==='players') renderPlayers();
   else if (tab==='games') renderGames();
   else if (tab==='stats') renderStats();
+  else if (tab==='other') renderOther();
   else renderTable();
 };
 
@@ -497,6 +548,7 @@ function parsePastedText(text) {
 // Parse the full match schedule — walks matches, computes W/D/L/gf/ga/pts from scratch
 function parseScheduleText(text) {
   const stats = {};
+  const matches = []; // individual match records for "other games" display
   leagueTeams.forEach(t => stats[t.name] = { p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0 });
 
   const lines = text.split(/\r?\n/).map(l => l.trim());
@@ -510,6 +562,11 @@ function parseScheduleText(text) {
     const teams = findTeamsInLine(line);
     if (teams.length !== 2) continue;
 
+    // Extract date+time and venue from the line
+    const dtMatch = line.match(/(\d{2}-\d{2}-20\d{2})\s*(\d{1,2}:\d{2})/);
+    const date = dtMatch ? dtMatch[1] : '';
+    const time = dtMatch ? dtMatch[2] : '';
+
     // Score could be on the same line or the next line (the tournament site puts it on next line)
     // First strip date+time from the line so we don't confuse date dashes with scores
     const cleaned = line.replace(/\d{2}-\d{2}-20\d{2}\s*\d{1,2}:\d{2}/, '');
@@ -522,13 +579,20 @@ function parseScheduleText(text) {
       }
     }
 
-    if (!scoreMatch) continue; // Match not played yet — skip
+    const [home, away] = teams;
+
+    if (!scoreMatch) {
+      // Match not played yet — still record as upcoming
+      matches.push({ date, time, home, away, hg: null, ag: null, played: false });
+      continue;
+    }
 
     const hg = parseInt(scoreMatch[1]);
     const ag = parseInt(scoreMatch[2]);
     if (isNaN(hg) || isNaN(ag)) continue;
 
-    const [home, away] = teams;
+    matches.push({ date, time, home, away, hg, ag, played: true });
+
     stats[home].p++; stats[away].p++;
     stats[home].gf += hg; stats[home].ga += ag;
     stats[away].gf += ag; stats[away].ga += hg;
@@ -544,7 +608,7 @@ function parseScheduleText(text) {
     if (s.p > 0) results[name] = s;
   });
   const unmatched = leagueTeams.map(t=>t.name).filter(n => !results[n]);
-  return { results, unmatched, mode: 'schedule', matchCount: parsedMatches };
+  return { results, unmatched, mode: 'schedule', matchCount: parsedMatches, matches };
 }
 
 // Parse the standings table (Pl. Team Club K V U T Score Pts)
@@ -654,11 +718,24 @@ window.applyPaste = async function() {
 
   setSyncStatus('syncing');
   try {
-    await set(ref(db,'leagueData'), {
+    const payload = {
       teams: encodeLeagueTeams(merged),
       updatedAt: Date.now(),
       updatedBy: out.mode
-    });
+    };
+    // Save the individual matches when we got a schedule (for "other games" view)
+    if (out.mode === 'schedule' && Array.isArray(out.matches)) {
+      payload.matches = out.matches.map(m => ({
+        date: m.date || '',
+        time: m.time || '',
+        home: encodeTeamKey(m.home),
+        away: encodeTeamKey(m.away),
+        hg: m.hg == null ? -1 : m.hg,
+        ag: m.ag == null ? -1 : m.ag,
+        played: !!m.played,
+      }));
+    }
+    await set(ref(db,'leagueData'), payload);
     closeModal();
     showToast(`✅ Updated from ${out.mode}`);
   } catch(e) {
@@ -916,6 +993,98 @@ function renderStats() {
   c.innerHTML = h;
 }
 
+// ============================================================
+// OTHER TAB — all played matches in Pulje 1, simple list
+// ============================================================
+function renderOther() {
+  const c = document.getElementById('mainContent');
+  const allMatches = (leagueData && Array.isArray(leagueData.matches)) ? leagueData.matches : [];
+  const ourTeam = 'Gebr. Heinemann Retail - Hvid';
+
+  // Only played matches involving any team (we DO show our team's games here too — it's the full picture)
+  // BUT keep them visually distinct, and exclude them from the count
+  const played = allMatches.filter(m => m.played);
+
+  if (!played.length) {
+    c.innerHTML = `<div class="section-header">
+        <div class="section-title">Other Games</div>
+      </div>
+      <div style="padding:30px 20px;text-align:center;color:var(--text3);font-size:13px;background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);line-height:1.7;">
+        🏟️<br><br>No match data yet.<br><br>Paste the full match schedule (Kampplan) on the <b>Table</b> tab. Every time you paste an updated schedule, more played matches show up here.
+      </div>`;
+    return;
+  }
+
+  // Sort newest first (DD-MM-YYYY)
+  const toDate = s => {
+    const [d,mo,y] = (s||'').split('-').map(Number);
+    return new Date(y||2026, (mo||1)-1, d||1).getTime();
+  };
+  played.sort((a,b) => toDate(b.date) - toDate(a.date));
+
+  // Group by date for nicer scrolling
+  const byDate = {};
+  played.forEach(m => {
+    const k = m.date || 'Unknown';
+    if (!byDate[k]) byDate[k] = [];
+    byDate[k].push(m);
+  });
+
+  const shortName = n => {
+    if (n === ourTeam) return 'GH Retail';
+    // Trim color suffix to keep names short
+    return n.replace(/ - (Sort|Hvid|Gul|Lilla|Blå|Bordeaux|Rød|Navy\/Hvid|Rød\/Hvid|Blå\/Hvid|Hvid\/Blå|Blå\/Lyserød)$/i, '');
+  };
+
+  const formatDate = d => {
+    if (!d) return '';
+    const parts = d.split('-');
+    if (parts.length !== 3) return d;
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${parseInt(parts[0])} ${months[parseInt(parts[1])-1]||''}`;
+  };
+
+  let h = `<div class="section-header">
+    <div class="section-title">Other Games</div>
+    <span class="count-badge">${played.length} played</span>
+  </div>
+  <div style="font-size:11px;color:var(--text3);margin-bottom:14px;padding:0 2px;">
+    All played matches in Pulje 1 — newest first. Update by pasting the schedule on the Table tab.
+  </div>`;
+
+  Object.keys(byDate).sort((a,b) => toDate(b) - toDate(a)).forEach(date => {
+    h += `<div style="font-size:11px;color:var(--text3);font-weight:600;letter-spacing:0.05em;text-transform:uppercase;margin:14px 0 6px 2px;">${formatDate(date)}</div>
+      <div style="background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);overflow:hidden;">`;
+
+    byDate[date].forEach((m, i) => {
+      const isLast = i === byDate[date].length - 1;
+      const homeWon = m.hg > m.ag;
+      const awayWon = m.ag > m.hg;
+      const draw = m.hg === m.ag;
+      const isOurs = m.home === ourTeam || m.away === ourTeam;
+      const rowBg = isOurs ? 'background:var(--green-dim);border-left:3px solid var(--green);' : '';
+      const homeStyle = homeWon ? 'color:#8ae8a0;font-weight:600;' : draw ? 'color:#f0d060;' : 'color:var(--text3);';
+      const awayStyle = awayWon ? 'color:#8ae8a0;font-weight:600;' : draw ? 'color:#f0d060;' : 'color:var(--text3);';
+
+      h += `<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:10px;padding:11px 14px;${isLast?'':'border-bottom:1px solid var(--border);'}align-items:center;${rowBg}">
+        <div style="font-size:13px;text-align:right;${homeStyle}white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${shortName(m.home)}</div>
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent);min-width:54px;text-align:center;background:var(--surface3);padding:3px 10px;border-radius:8px;letter-spacing:0.02em;">${m.hg}–${m.ag}</div>
+        <div style="font-size:13px;text-align:left;${awayStyle}white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${shortName(m.away)}</div>
+      </div>`;
+    });
+
+    h += `</div>`;
+  });
+
+  h += `<div style="margin-top:16px;padding:10px 14px;background:var(--surface);border-radius:10px;border:1px solid var(--border);font-size:11px;color:var(--text3);line-height:1.7;">
+    <span style="color:#8ae8a0;font-weight:600;">━</span> Winner &nbsp;|&nbsp;
+    <span style="color:#f0d060;">━</span> Draw &nbsp;|&nbsp;
+    <span style="color:var(--green);">━</span> GH Retail
+  </div>`;
+
+  c.innerHTML = h;
+}
+
 function avatarEl(p, size=56) {
   const st = `width:${size}px;height:${size}px;`;
   if (p.photo) return `<div class="player-avatar" style="${st}"><img src="${p.photo}"></div>`;
@@ -995,7 +1164,7 @@ function renderGames() {
           <div class="game-date-box"><div class="game-day">${dt.day}</div><div class="game-month">${dt.month}</div></div>
           <div class="game-info">
             <div class="game-vs">vs ${g.opponent}</div>
-            <div class="game-meta">🕐 ${g.time} &nbsp;|&nbsp; 📍 ${g.address}</div>
+            <div class="game-meta">🕐 ${g.time} &nbsp;|&nbsp; <a href="${getMapsUrl(g.address)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--text2);text-decoration:none;border-bottom:1px dashed var(--text3);">📍 ${displayVenue(g.address)}</a></div>
           </div>
           ${rb}
         </div>
