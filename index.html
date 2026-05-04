@@ -1286,6 +1286,7 @@ function renderGames() {
             <div class="game-meta">🕐 ${g.time} &nbsp;|&nbsp; <a href="${getMapsUrl(g.address)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--text2);text-decoration:none;border-bottom:1px dashed var(--text3);">📍 ${displayVenue(g.address)}</a></div>
           </div>
           ${rb}
+          <button onclick="openEditGame('${g.id}')" title="Edit game" style="background:transparent;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:6px;border-radius:6px;align-self:flex-start;line-height:1;">✏️</button>
         </div>
         <div class="game-roster-section">
           <div class="progress-label"><span>Squad</span><span class="count">${n} / ${MAX} players</span></div>
@@ -1525,6 +1526,65 @@ window.openAddGame = () => {
       <button class="cancel-btn" onclick="closeModal()">Cancel</button>
     </div>
   </div>`;
+};
+
+window.openEditGame = (gameId) => {
+  const g = games[gameId];
+  if (!g) return;
+  // Capture original date/time so we can detect rescheduling and notify
+  const origDate = g.date || '';
+  const origTime = g.time || '';
+  document.getElementById('modalContainer').innerHTML=`<div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+    <div class="modal">
+      <div class="modal-handle"></div>
+      <div class="modal-title">Edit Game</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.5;">
+        Update if the game has been rescheduled or moved to a new venue. Sign-ups and results are kept.
+      </div>
+      <div class="form-group">
+        <label class="form-label">Opponent Team</label>
+        <input class="form-input" id="editOpponent" value="${(g.opponent||'').replace(/"/g,'&quot;')}">
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Date</label><input class="form-input" id="editDate" type="date" value="${origDate}"></div>
+        <div class="form-group"><label class="form-label">Time (24h)</label><input class="form-input" id="editTime" type="time" value="${origTime}"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Address / Location</label>
+        <input class="form-input" id="editAddress" value="${(g.address||'').replace(/"/g,'&quot;')}">
+      </div>
+      <button class="submit-btn" id="saveEditBtn" onclick="saveGameEdit('${gameId}','${origDate}','${origTime}')">Save Changes</button>
+      <button onclick="deleteGame('${gameId}');closeModal();" style="width:100%;padding:12px;background:#fef2f3;border:1px solid #fecaca;border-radius:12px;color:#c8102e;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px;">🗑️ Delete Game</button>
+      <button class="cancel-btn" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>`;
+};
+
+window.saveGameEdit = async (gameId, origDate, origTime) => {
+  const opponent = document.getElementById('editOpponent').value.trim();
+  const date = document.getElementById('editDate').value;
+  const time = document.getElementById('editTime').value;
+  const address = document.getElementById('editAddress').value.trim();
+  if (!opponent || !date || !time || !address) { showToast('Please fill in all fields'); return; }
+
+  const btn = document.getElementById('saveEditBtn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  setSyncStatus('syncing');
+
+  try {
+    await update(ref(db), {
+      [`games/${gameId}/opponent`]: opponent,
+      [`games/${gameId}/date`]: date,
+      [`games/${gameId}/time`]: time,
+      [`games/${gameId}/address`]: address,
+    });
+    closeModal();
+    const rescheduled = (date !== origDate) || (time !== origTime);
+    showToast(rescheduled ? '🗓️ Game rescheduled — let teammates know!' : 'Game updated ✅');
+  } catch(e) {
+    btn.disabled = false; btn.textContent = 'Save Changes';
+    showToast('Error. Try again.');
+  }
 };
 
 window.saveGame = async () => {
