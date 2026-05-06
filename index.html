@@ -404,6 +404,44 @@ const leagueTeams = [
   { pos:16, name:'Rentokil-Initial - Hvid/Blå' },
 ];
 
+// Default team contacts (initial list — users can edit and the changes sync via Firebase)
+const defaultContacts = {
+  'BK Norlys - Rød/Hvid':           { name:'Simon Strøyer',           phone:'60437073', email:'sistro@norlys.dk' },
+  'BK OiSTER - Lilla':              { name:'Jakob Elsfeldt Schütt',   phone:'31200778', email:'Jakob.schutt@oister.dk' },
+  'FC Railtek - Navy/Hvid':         { name:'Niels Larsen',            phone:'24848360', email:'nl@railtek.dk' },
+  'FC Styrkehuset - Sort':          { name:'Onur Taylan',             phone:'41203087', email:'ote@styekehuset.dk' },
+  'Flyhjælp United - Blå/Hvid':     { name:'Erik Larsen',             phone:'31316587', email:'erik.larsen@flightright.de' },
+  'Gebr. Heinemann Retail - Hvid':  { name:'Dennis Villads Meiner',   phone:'27885249', email:'d_meiner@heinemann-retail.dk' },
+  'LIF - Gul':                      { name:'Malte Dørge',             phone:'50881223', email:'mld@naviair.dk' },
+  'MergeIT - Sort':                 { name:'Malthe Wejnold Jørgensen',phone:'28149305', email:'mw@mergeit.dk' },
+  'MS United - Blå':                { name:'Bjarke Larsen',           phone:'61780667', email:'bjlarsen@microsoft.com' },
+  'Netlight United - Bordeaux':     { name:'André Breumsø',           phone:'26477544', email:'anms@netlight.com' },
+  'Rentokil-Initial - Hvid/Blå':    { name:'Kenneth',                 phone:'30652090', email:'kenneth.olsen@rentokil-initial.com' },
+  'SAS Stars - Blå':                { name:'Morten Nilsson',          phone:'53550171', email:'morten.nilsson@sas.dk' },
+  'Securitas - Rød':                { name:'Thomas Hjorth Andersen',  phone:'23385641', email:'thomas.h.andersen@securitas.dk' },
+  'Solar BK - Blå':                 { name:'Sebastian Carlsson',      phone:'30357090', email:'sbhc@solar.dk' },
+  'Team GO - Gul':                  { name:'Besmir Sulejmani',        phone:'60529123', email:'bsu@grouponline.dk' },
+  'The Helping Hands - Sort':       { name:'Mikail Aydilek',          phone:'31441120', email:'mikailaydilek@gmail.com' },
+};
+
+let contactOverrides = {}; // { teamName: { name, phone, email } } from Firebase
+
+function getContact(teamName) {
+  return contactOverrides[teamName] || defaultContacts[teamName] || null;
+}
+
+// Listen for contact edits synced from other teammates
+onValue(ref(db,'contacts'), snap => {
+  const raw = snap.val() || {};
+  contactOverrides = {};
+  Object.entries(raw).forEach(([k, v]) => {
+    contactOverrides[decodeTeamKey(k)] = v;
+  });
+  // Re-render if a contacts modal is currently open
+  const modalC = document.getElementById('modalContainer');
+  if (modalC && modalC.querySelector('[data-contacts-list]')) openContactsList();
+}, () => {});
+
 function renderTable() {
   const c = document.getElementById('mainContent');
   const ourName = 'Gebr. Heinemann Retail - Hvid';
@@ -482,6 +520,7 @@ function renderTable() {
 
   <div style="display:flex;gap:8px;margin-bottom:12px;">
     <button onclick="openPasteTable()" style="flex:1;padding:10px;background:var(--green);border:none;border-radius:10px;color:#fff;font-family:'DM Sans',sans-serif;font-weight:600;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">📋 Paste Table or Schedule</button>
+    <button onclick="openContactsList()" style="padding:10px 12px;background:var(--surface3);border:1px solid var(--border);border-radius:10px;color:var(--text2);font-family:'DM Sans',sans-serif;font-size:14px;cursor:pointer;" title="Team contacts">📞</button>
     <button onclick="openLeagueSource()" style="padding:10px 12px;background:var(--surface3);border:1px solid var(--border);border-radius:10px;color:var(--text2);font-family:'DM Sans',sans-serif;font-size:12px;cursor:pointer;">🔗</button>
   </div>
 
@@ -895,8 +934,127 @@ window.saveTeamRow = async function(teamName) {
 };
 
 // ============================================================
-// STATS TAB — top scorers, top assists, team totals
+// TEAM CONTACTS — list, view, and edit team contact info
 // ============================================================
+window.openContactsList = function() {
+  const ourTeam = 'Gebr. Heinemann Retail - Hvid';
+  // Sort: our team first, then alphabetical
+  const sorted = [...leagueTeams].sort((a,b) => {
+    if (a.name === ourTeam) return -1;
+    if (b.name === ourTeam) return 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  const rows = sorted.map(t => {
+    const c = getContact(t.name);
+    const isOurs = t.name === ourTeam;
+    const rowBg = isOurs ? 'background:var(--green-dim);border-left:3px solid var(--green);' : '';
+    const teamLabel = isOurs ? 'GH Retail (us)' : t.name;
+    const safeName = t.name.replace(/'/g,"\\'");
+    if (!c) {
+      return `<div onclick="openEditContact('${safeName}')" style="padding:12px 14px;border-bottom:1px solid var(--border);cursor:pointer;${rowBg}">
+        <div style="font-size:13px;font-weight:600;">${teamLabel}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:3px;">No contact yet — tap to add</div>
+      </div>`;
+    }
+    const phoneClean = (c.phone||'').replace(/\s+/g,'');
+    return `<div style="padding:12px 14px;border-bottom:1px solid var(--border);${rowBg}">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;color:${isOurs?'var(--green)':'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${teamLabel}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.name||'—'}</div>
+        </div>
+        <button onclick="event.stopPropagation();openEditContact('${safeName}')" title="Edit" style="background:transparent;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:6px;">✏️</button>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px;">
+        ${phoneClean ? `<a href="tel:+45${phoneClean}" onclick="event.stopPropagation()" style="flex:1;text-align:center;background:var(--surface3);border:1px solid var(--border);border-radius:7px;padding:6px;font-size:11px;color:var(--text2);text-decoration:none;font-weight:500;">📞 ${c.phone}</a>` : ''}
+        ${phoneClean ? `<a href="sms:+45${phoneClean}" onclick="event.stopPropagation()" style="background:var(--surface3);border:1px solid var(--border);border-radius:7px;padding:6px 10px;font-size:11px;color:var(--text2);text-decoration:none;font-weight:500;">💬</a>` : ''}
+        ${phoneClean ? `<a href="https://wa.me/45${phoneClean}" target="_blank" onclick="event.stopPropagation()" style="background:var(--surface3);border:1px solid var(--border);border-radius:7px;padding:6px 10px;font-size:11px;color:var(--text2);text-decoration:none;font-weight:500;">🟢</a>` : ''}
+        ${c.email ? `<a href="mailto:${c.email}" onclick="event.stopPropagation()" style="flex:1;text-align:center;background:var(--surface3);border:1px solid var(--border);border-radius:7px;padding:6px;font-size:11px;color:var(--text2);text-decoration:none;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">✉️ Email</a>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+      <div class="modal" data-contacts-list style="padding-bottom:60px;">
+        <div class="modal-handle"></div>
+        <div class="modal-title">📞 Team Contacts</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.5;">
+          Pulje 1 team captains. Tap 📞 to call, 💬 for SMS, 🟢 for WhatsApp, ✉️ for email. Tap ✏️ to edit.
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+          ${rows}
+        </div>
+        <button class="cancel-btn" onclick="closeModal()" style="margin-top:14px;">Close</button>
+      </div>
+    </div>`;
+};
+
+window.openEditContact = function(teamName) {
+  const c = getContact(teamName) || { name:'', phone:'', email:'' };
+  const safeTeam = teamName.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+  const safeName = (c.name||'').replace(/"/g,'&quot;');
+  const safePhone = (c.phone||'').replace(/"/g,'&quot;');
+  const safeEmail = (c.email||'').replace(/"/g,'&quot;');
+
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Edit Contact</div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:14px;font-weight:600;">${teamName}</div>
+        <div class="form-group">
+          <label class="form-label">Captain / Contact name</label>
+          <input class="form-input" id="cName" value="${safeName}" placeholder="e.g. John Doe">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Phone (DK number, no +45)</label>
+          <input class="form-input" id="cPhone" type="tel" value="${safePhone}" placeholder="e.g. 12345678">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input class="form-input" id="cEmail" type="email" value="${safeEmail}" placeholder="e.g. captain@team.dk">
+        </div>
+        <button class="submit-btn" onclick="saveContact('${safeTeam}')">Save Contact</button>
+        <button onclick="resetContact('${safeTeam}')" style="width:100%;padding:10px;background:transparent;border:1px solid var(--border);border-radius:10px;color:var(--text3);font-family:'DM Sans',sans-serif;font-size:12px;cursor:pointer;margin-top:8px;">↺ Reset to default</button>
+        <button class="cancel-btn" onclick="openContactsList()">Back</button>
+      </div>
+    </div>`;
+};
+
+window.saveContact = async function(teamName) {
+  const data = {
+    name:  document.getElementById('cName').value.trim(),
+    phone: document.getElementById('cPhone').value.trim().replace(/\s+/g,''),
+    email: document.getElementById('cEmail').value.trim(),
+  };
+  setSyncStatus('syncing');
+  try {
+    await set(ref(db,`contacts/${encodeTeamKey(teamName)}`), data);
+    showToast(`✅ Saved ${teamName.length > 22 ? teamName.slice(0,20)+'…' : teamName}`);
+    openContactsList();
+  } catch(e) {
+    console.error('Save failed:', e);
+    const msg = (e && e.message) ? e.message : String(e);
+    alert(`❌ Save failed:\n\n${msg}`);
+    setSyncStatus('offline');
+  }
+};
+
+window.resetContact = async function(teamName) {
+  if (!confirm(`Reset ${teamName} contact to the default values?`)) return;
+  setSyncStatus('syncing');
+  try {
+    await remove(ref(db,`contacts/${encodeTeamKey(teamName)}`));
+    showToast(`Reset to default`);
+    openContactsList();
+  } catch(e) {
+    showToast('Error.');
+  }
+};
+
+
 function renderStats() {
   const c = document.getElementById('mainContent');
   const arr = Object.entries(players).map(([id,p])=>({id,...p}));
