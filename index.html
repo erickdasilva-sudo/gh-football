@@ -80,6 +80,12 @@
   .card-actions { display: flex; flex-direction: column; gap: 6px; }
   .icon-btn { width: 32px; height: 32px; background: var(--surface3); border: 1px solid var(--border); border-radius: 8px; color: var(--text2); font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
   .game-card { background: var(--surface); border-radius: var(--radius); margin-bottom: 12px; border: 1px solid var(--border); overflow: hidden; }
+  .game-card-played { opacity: 0.92; }
+  .game-card-played .game-date-box { background: var(--surface2); color: var(--text3); }
+  .game-card-played .game-day, .game-card-played .game-month { opacity: 0.7; }
+  .games-toggle { display: flex; gap: 6px; margin-bottom: 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 11px; padding: 4px; }
+  .games-toggle button { flex: 1; padding: 9px 8px; border: none; background: transparent; color: var(--text3); font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 600; border-radius: 8px; cursor: pointer; transition: all 0.15s; letter-spacing: 0.02em; }
+  .games-toggle button.active { background: #fff; color: var(--green); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
   .game-header { padding: 14px; display: flex; align-items: flex-start; gap: 12px; }
   .game-date-box { background: var(--surface3); border-radius: 10px; padding: 8px 10px; text-align: center; min-width: 52px; flex-shrink: 0; border: 1px solid var(--border); }
   .game-day { font-family: 'Bebas Neue', sans-serif; font-size: 28px; line-height: 1; color: var(--accent); }
@@ -236,6 +242,7 @@ const fbApp = initializeApp(firebaseConfig);
 const db = getDatabase(fbApp);
 
 let currentTab = 'players';
+let gamesFilter = 'upcoming'; // 'upcoming' or 'played'
 let players = {};
 let games = {};
 let leagueData = null; // { teams: {teamName: stats}, matches: [{date,time,venue,home,away,hg,ag,round}], updatedAt, updatedBy }
@@ -1431,21 +1438,43 @@ function renderPlayers() {
 
 function renderGames() {
   const c = document.getElementById('mainContent');
-  const arr = Object.entries(games).map(([id,g])=>({id,...g}))
-    .sort((a,b)=>(a.date+a.time)>(b.date+b.time)?1:-1);
+  const all = Object.entries(games).map(([id,g])=>({id,...g}));
+
+  // A game is "played" if it has a real X-Y result.
+  const isPlayed = g => g.result && /^\d+-\d+$/.test(g.result);
+
+  const upcomingArr = all.filter(g => !isPlayed(g))
+    .sort((a,b) => (a.date+a.time)>(b.date+b.time)?1:-1);
+  const playedArr = all.filter(isPlayed)
+    .sort((a,b) => (a.date+a.time)>(b.date+b.time)?-1:1); // newest first
+
+  const filter = (gamesFilter === 'played') ? 'played' : 'upcoming';
+  const arr = filter === 'played' ? playedArr : upcomingArr;
 
   let h = `<div class="section-header">
     <div class="section-title">Games</div>
-    <span class="count-badge">${arr.length} kampe</span>
+    <span class="count-badge">${arr.length} ${filter === 'played' ? 'played' : 'upcoming'}</span>
+  </div>
+
+  <div class="games-toggle">
+    <button class="${filter==='upcoming'?'active':''}" onclick="setGamesFilter('upcoming')">Upcoming · ${upcomingArr.length}</button>
+    <button class="${filter==='played'?'active':''}" onclick="setGamesFilter('played')">Played · ${playedArr.length}</button>
   </div>`;
 
   if (!arr.length) {
-    h += `<div class="empty"><div class="empty-icon">📅</div><div class="empty-text">No games yet.<br>Create the first game!</div></div>`;
+    const emptyMsg = filter === 'played'
+      ? 'No games played yet.<br>Results will appear here once you save them.'
+      : 'No upcoming games.<br>Create the first game!';
+    h += `<div class="empty"><div class="empty-icon">${filter==='played'?'📊':'📅'}</div><div class="empty-text">${emptyMsg}</div></div>`;
   } else {
     arr.forEach(g => {
       const dt = formatDate(g.date);
       const sids = g.players ? Object.keys(g.players) : [];
-      const n = sids.length, MIN=7, MAX=10, pct=Math.min(n/MAX*100,100), full=n>=MAX, ready=n>=MIN;
+      // Cap n at MAX for visual purposes (in case 11/10 happens), but keep real count for display
+      const n = sids.length, MIN=7, MAX=10;
+      const pct = Math.max(0, Math.min(n/MAX*100, 100));
+      const full = n >= MAX, ready = n >= MIN;
+      const overFlow = n > MAX;
       const minPct = (MIN/MAX)*100;
       let avs = sids.map(pid=>{ const pl=players[pid]; return pl?miniAv({...pl,id:pid},g.scorers&&g.scorers[pid]?g.scorers[pid]:0, g.assists&&g.assists[pid]?g.assists[pid]:0):''; }).join('');
       let rb='';
@@ -1457,15 +1486,34 @@ function renderGames() {
 
       // Squad status indicator
       let statusBanner = '';
-      if (full) {
-        statusBanner = '<div class="squad-status squad-status-full">⭐ Squad Full — 10/10</div>';
+      if (filter === 'played') {
+        // For played games we don't need the squad-full nag
+        statusBanner = '';
+      } else if (full) {
+        statusBanner = `<div class="squad-status squad-status-full">⭐ Squad Full — ${n}/${MAX}${overFlow?' <span style="font-size:11px;font-weight:500;opacity:0.7;">('+(n-MAX)+' over)</span>':''}</div>`;
       } else if (ready) {
         statusBanner = `<div class="squad-status squad-status-ready">✅ Ready to play (${n}/${MAX})</div>`;
       } else {
         const missing = MIN - n;
         statusBanner = `<div class="squad-status squad-status-warn">⚠️ Need 7 to play — ${missing} more ${missing===1?'player':'players'} needed</div>`;
       }
-      h += `<div class="game-card">
+
+      // For played games, show simpler action row
+      const actionsRow = filter === 'played'
+        ? `<div class="game-actions">
+            <button class="result-btn" style="flex:1;" onclick="openResult('${g.id}')">📊 Edit Result</button>
+            <button class="share-btn" onclick="shareGame('${g.id}')" title="Share">📤</button>
+          </div>`
+        : `<div class="game-actions">
+            <button class="join-btn"${full?' disabled':''} onclick="openJoinGame('${g.id}')">${full?'🔒 Full':'+ Sign Up'}</button>
+            <button class="leave-btn" onclick="openLeaveGame('${g.id}')">− Leave</button>
+            <button class="result-btn" onclick="openResult('${g.id}')">📊 Result</button>
+            <button class="share-btn" onclick="shareGame('${g.id}')" title="Share">📤</button>
+          </div>`;
+
+      const cardClass = filter === 'played' ? 'game-card game-card-played' : 'game-card';
+
+      h += `<div class="${cardClass}">
         <div class="game-header">
           <div class="game-date-box"><div class="game-day">${dt.day}</div><div class="game-month">${dt.month}</div></div>
           <div class="game-info">
@@ -1482,19 +1530,19 @@ function renderGames() {
             <div class="progress-min-marker" style="left:${minPct}%;" title="Minimum 7 to play"></div>
           </div>
           ${statusBanner}
-          <div class="avatars-row">${avs||'<span style="font-size:12px;color:var(--text3)">No players signed up yet</span>'}</div>
+          <div class="avatars-row">${avs||'<span style="font-size:12px;color:var(--text3)">No players signed up</span>'}</div>
         </div>
-        <div class="game-actions">
-          <button class="join-btn"${full?' disabled':''} onclick="openJoinGame('${g.id}')">${full?'🔒 Full':'+ Sign Up'}</button>
-          <button class="leave-btn" onclick="openLeaveGame('${g.id}')">− Leave</button>
-          <button class="result-btn" onclick="openResult('${g.id}')">📊 Result</button>
-          <button class="share-btn" onclick="shareGame('${g.id}')" title="Share">📤</button>
-        </div>
+        ${actionsRow}
       </div>`;
     });
   }
   c.innerHTML = h;
 }
+
+window.setGamesFilter = function(f) {
+  gamesFilter = f;
+  renderGames();
+};
 
 window.openAddPlayer = () => { editingPlayer=null; showPlayerModal(); };
 window.openEditPlayer = id => { editingPlayer={id,...players[id]}; showPlayerModal(); };
