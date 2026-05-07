@@ -1325,6 +1325,8 @@ function getNextGame() {
     .map(([id, g]) => ({ id, ...g }))
     .filter(g => {
       if (!g.date) return false;
+      // Skip games that already have a result (played, walkover, or otherwise concluded)
+      if (g.result && /^\d+-\d+$/.test(g.result)) return false;
       // Convert YYYY-MM-DD + HH:MM to timestamp
       const dt = new Date(`${g.date}T${g.time||'00:00'}:00`);
       return dt.getTime() > now - 2*60*60*1000; // include games started in last 2h
