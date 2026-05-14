@@ -1315,20 +1315,59 @@ function avatarEl(p, size=56) {
   return `<div class="player-avatar" style="${st}">${initials(p.name)}</div>`;
 }
 function miniAv(p, goals=0, assists=0, extras=0) {
+  // Keep miniAv for sign-up modal only (where avatars are small selectors)
   const c = p.photo ? `<img src="${p.photo}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">` : initials(p.name);
   let b = '';
-  if (extras > 0) {
-    b = `<span class="scorer-badge" style="background:#c8102e;color:#fff;font-size:8px;">+${extras}</span>`;
-  } else if (goals > 0) {
-    b = `<span class="scorer-badge" style="background:#d4a017">${goals}</span>`;
-  } else if (assists > 0) {
-    b = `<span class="scorer-badge" style="background:#1f6feb;color:#fff">${assists}</span>`;
-  }
-  const guestTitle = extras > 0 ? ` +${extras} guest${extras>1?'s':''}` : '';
-  // Use a <button> so mobile tap works reliably. stopPropagation prevents game-card actions from firing.
-  return `<button type="button" onclick="event.stopPropagation();showPlayerPopup('${p.id}')" class="mini-avatar-btn" title="${p.name}${guestTitle}">
-    <div class="mini-avatar" style="pointer-events:none;">${c}${b}</div>
-  </button>`;
+  if (extras > 0) b = `<span class="scorer-badge" style="background:#c8102e;color:#fff;font-size:8px;">+${extras}</span>`;
+  else if (goals > 0) b = `<span class="scorer-badge" style="background:#d4a017">${goals}</span>`;
+  else if (assists > 0) b = `<span class="scorer-badge" style="background:#1f6feb;color:#fff">${assists}</span>`;
+  return `<div class="mini-avatar" style="pointer-events:none;">${c}${b}</div>`;
+}
+
+// Build an inline expandable player list for a game card
+function buildPlayerList(gameId, sids, playersData, scorers, assists) {
+  if (!sids.length) return `<div style="font-size:12px;color:var(--text3);padding:4px 0;">No players signed up</div>`;
+  return sids.map((pid, i) => {
+    const pl = players[pid];
+    if (!pl) return '';
+    const cnt = playersData[pid];
+    const extras = typeof cnt === 'number' ? cnt - 1 : 0;
+    const goals = (scorers && scorers[pid]) || 0;
+    const ast = (assists && assists[pid]) || 0;
+    const photo = pl.photo
+      ? `<img src="${pl.photo}" style="width:36px;height:36px;object-fit:cover;border-radius:50%;">`
+      : `<div style="width:36px;height:36px;border-radius:50%;background:var(--surface3);border:2px solid var(--border2);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:13px;color:var(--green);">${initials(pl.name)}</div>`;
+    const phoneClean = (pl.contact||'').replace(/\s+/g,'').replace(/[^0-9+]/g,'');
+    const isPhone = phoneClean.length >= 8;
+    const chips = [
+      goals > 0 ? `<span style="font-size:10px;background:#fef9e7;color:#b88a00;border:1px solid #f0d060;border-radius:4px;padding:1px 5px;">⚽ ${goals}</span>` : '',
+      ast > 0 ? `<span style="font-size:10px;background:#e8f0ff;color:#1f6feb;border:1px solid #90b0ff;border-radius:4px;padding:1px 5px;">👟 ${ast}</span>` : '',
+      extras > 0 ? `<span style="font-size:10px;background:var(--green-dim);color:var(--green);border:1px solid var(--green);border-radius:4px;padding:1px 5px;">+${extras} guest${extras>1?'s':''}</span>` : '',
+    ].filter(Boolean).join(' ');
+
+    const detailId = `pd_${gameId}_${pid}`;
+    const contactHtml = isPhone
+      ? `<div style="display:flex;gap:6px;margin-top:6px;">
+          <a href="tel:+45${phoneClean}" style="flex:1;text-align:center;background:var(--surface3);border:1px solid var(--border);border-radius:7px;padding:6px 4px;font-size:11px;color:var(--text2);text-decoration:none;font-weight:600;">📞 Call</a>
+          <a href="sms:+45${phoneClean}" style="flex:1;text-align:center;background:var(--surface3);border:1px solid var(--border);border-radius:7px;padding:6px 4px;font-size:11px;color:var(--text2);text-decoration:none;font-weight:600;">💬 SMS</a>
+          <a href="https://wa.me/45${phoneClean}" target="_blank" style="flex:1;text-align:center;background:var(--surface3);border:1px solid var(--border);border-radius:7px;padding:6px 4px;font-size:11px;color:var(--text2);text-decoration:none;font-weight:600;">🟢 WhatsApp</a>
+        </div>`
+      : (pl.contact ? `<div style="font-size:11px;color:var(--text3);margin-top:4px;">${pl.contact}</div>` : '');
+
+    return `<div style="border-top:${i>0?'1px solid var(--border)':'none'};padding:8px 0;">
+      <div onclick="var d=document.getElementById('${detailId}');d.style.display=d.style.display==='none'?'block':'none';" style="display:flex;align-items:center;gap:10px;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;">
+        <div style="flex-shrink:0;overflow:hidden;border-radius:50%;">${photo}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${pl.name}</div>
+          ${chips ? `<div style="margin-top:3px;">${chips}</div>` : ''}
+        </div>
+        <div style="font-size:11px;color:var(--text3);flex-shrink:0;">▾</div>
+      </div>
+      <div id="${detailId}" style="display:none;padding-top:6px;padding-left:46px;">
+        ${contactHtml || '<div style="font-size:11px;color:var(--text3);">No contact info</div>'}
+      </div>
+    </div>`;
+  }).join('');
 }
 
 window.showPlayerPopup = function(playerId) {
@@ -1605,7 +1644,7 @@ function renderGames() {
             <div class="progress-min-marker" style="left:${minPct}%;" title="Minimum 7 to play"></div>
           </div>
           ${statusBanner}
-          <div class="avatars-row">${avs||'<span style="font-size:12px;color:var(--text3)">No players signed up</span>'}</div>
+          <div style="margin-top:6px;">${buildPlayerList(g.id, sids, playersData, g.scorers, g.assists)}</div>
         </div>
         ${actionsRow}
       </div>`;
