@@ -1315,7 +1315,6 @@ function avatarEl(p, size=56) {
 }
 function miniAv(p, goals=0, assists=0, extras=0) {
   const c = p.photo ? `<img src="${p.photo}">` : initials(p.name);
-  // Priority: extras badge > goals badge > assists badge
   let b = '';
   if (extras > 0) {
     b = `<span class="scorer-badge" style="background:#c8102e;color:#fff;font-size:8px;">+${extras}</span>`;
@@ -1325,8 +1324,66 @@ function miniAv(p, goals=0, assists=0, extras=0) {
     b = `<span class="scorer-badge" style="background:#1f6feb;color:#fff">${assists}</span>`;
   }
   const guestTitle = extras > 0 ? ` +${extras} guest${extras>1?'s':''}` : '';
-  return `<div class="mini-avatar" title="${p.name}${guestTitle} ${goals>0?'⚽'+goals:''} ${assists>0?'👟'+assists:''}">${c}${b}</div>`;
+  return `<div class="mini-avatar" onclick="event.stopPropagation();showPlayerPopup('${p.id}')" style="cursor:pointer;" title="${p.name}${guestTitle}">${c}${b}</div>`;
 }
+
+window.showPlayerPopup = function(playerId) {
+  const p = players[playerId];
+  if (!p) return;
+
+  const totalGoals   = Object.values(games).reduce((s,g)=>s+(g.scorers&&g.scorers[playerId]?g.scorers[playerId]:0),0);
+  const totalAssists = Object.values(games).reduce((s,g)=>s+(g.assists&&g.assists[playerId]?g.assists[playerId]:0),0);
+  const gPlayed      = Object.values(games).filter(g=>g.players&&g.players[playerId]).length;
+
+  const av = p.photo
+    ? `<img src="${p.photo}" style="width:72px;height:72px;object-fit:cover;border-radius:50%;border:3px solid var(--green);">`
+    : `<div style="width:72px;height:72px;border-radius:50%;background:var(--surface3);border:3px solid var(--green);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:26px;color:var(--green);">${initials(p.name)}</div>`;
+
+  const phoneClean = (p.contact||'').replace(/\s+/g,'').replace(/[^0-9+]/g,'');
+  const isPhone = phoneClean.length >= 8;
+
+  const contactRow = isPhone ? `
+    <div style="display:flex;gap:6px;margin-top:12px;">
+      <a href="tel:+45${phoneClean}" style="flex:1;text-align:center;background:var(--surface3);border:1px solid var(--border);border-radius:8px;padding:8px 6px;font-size:12px;color:var(--text2);text-decoration:none;font-weight:600;">📞 Call</a>
+      <a href="sms:+45${phoneClean}" style="flex:1;text-align:center;background:var(--surface3);border:1px solid var(--border);border-radius:8px;padding:8px 6px;font-size:12px;color:var(--text2);text-decoration:none;font-weight:600;">💬 SMS</a>
+      <a href="https://wa.me/45${phoneClean}" target="_blank" style="flex:1;text-align:center;background:var(--surface3);border:1px solid var(--border);border-radius:8px;padding:8px 6px;font-size:12px;color:var(--text2);text-decoration:none;font-weight:600;">🟢 WA</a>
+    </div>` : (p.contact ? `<div style="margin-top:10px;font-size:12px;color:var(--text3);text-align:center;">${p.contact}</div>` : '');
+
+  // Small popup — not a full modal, just a centred card with backdrop
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeModal()" style="align-items:center;justify-content:center;">
+      <div style="background:var(--surface);border-radius:18px;padding:20px 18px 16px;width:280px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,0.12);border:1px solid var(--border);position:relative;">
+        <button onclick="closeModal()" style="position:absolute;top:12px;right:12px;background:var(--surface3);border:none;width:28px;height:28px;border-radius:50%;font-size:14px;cursor:pointer;color:var(--text3);display:flex;align-items:center;justify-content:center;">✕</button>
+
+        <div style="display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:14px;">
+          ${av}
+          <div style="text-align:center;">
+            <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:0.03em;color:var(--accent);line-height:1.1;">${p.name}</div>
+            ${p.contact ? `<div style="font-size:12px;color:var(--text3);margin-top:2px;">${p.contact}</div>` : ''}
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:4px;">
+          <div style="text-align:center;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:8px 4px;">
+            <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:#d4a017;line-height:1;">${totalGoals}</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:2px;">Goals</div>
+          </div>
+          <div style="text-align:center;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:8px 4px;">
+            <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:#1f6feb;line-height:1;">${totalAssists}</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:2px;">Assists</div>
+          </div>
+          <div style="text-align:center;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:8px 4px;">
+            <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);line-height:1;">${gPlayed}</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:2px;">Games</div>
+          </div>
+        </div>
+
+        ${contactRow}
+
+        <button onclick="openPlayerProfile('${playerId}');closeModal();" style="width:100%;margin-top:10px;padding:9px;background:transparent;border:1px solid var(--border);border-radius:10px;color:var(--text3);font-family:'DM Sans',sans-serif;font-size:12px;cursor:pointer;">View full profile →</button>
+      </div>
+    </div>`;
+};
 
 function getNextGame() {
   const now = Date.now();
